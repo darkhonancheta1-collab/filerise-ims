@@ -1,0 +1,40 @@
+# ============================================================
+# Filrise — Apache Security Hardening (.htaccess)
+# ============================================================
+
+# Fix: Anti-Clickjacking
+Header always set X-Frame-Options "SAMEORIGIN"
+
+# Fix: X-Content-Type-Options
+Header always set X-Content-Type-Options "nosniff"
+
+# Fix: X-Powered-By (removes PHP version info)
+Header always unset X-Powered-By
+Header unset X-Powered-By
+
+# Fix: Referrer Policy
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+# Fix: Cookie SameSite + HttpOnly
+Header always edit Set-Cookie ^(.*)$ "$1; HttpOnly; SameSite=Strict"
+
+# Fix: Permissions Policy
+Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+
+# Remove Server header
+Header unset Server
+
+# ── Deny direct access to sensitive files ──
+<FilesMatch "^(config\.php|security\.php|\.env|composer\.json|composer\.lock)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# ── Prevent directory listing ──
+Options -Indexes
+
+# ── Block access to backup/log files ──
+<FilesMatch "\.(bak|log|sql|sh|old|swp)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

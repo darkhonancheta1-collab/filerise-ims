@@ -1,0 +1,15 @@
+# Sensitive config files (contain API keys / DB credentials)
+config.php
+distributor/config.php
+
+# Dependencies (can be reinstalled via composer)
+/vendor/
+
+# Logs and temp files
+*.log
+*.bak
+*.tmp
+
+# OS/editor junk
+.DS_Store
+Thumbs.db

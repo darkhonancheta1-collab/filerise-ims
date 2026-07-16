@@ -1,0 +1,59 @@
+<?php
+session_start();
+require 'config.php';
+
+if (!isset($_SESSION['user_id'])) {
+  http_response_code(401);
+  exit;
+}
+
+$input = json_decode(file_get_contents('php://input'), true);
+$text  = trim($input['text'] ?? '');
+
+if (!$text) {
+  http_response_code(400);
+  echo json_encode(['error' => 'No text provided']);
+  exit;
+}
+
+// ElevenLabs API Key
+$apiKey  = ELEVENLABS_API_KEY;
+$voiceId = 'EXAVITQu4vr4xnSDxMaL'; // Sarah — warm, natural female voice
+
+$payload = json_encode([
+  'text'          => $text,
+  'model_id'      => 'eleven_turbo_v2_5',
+  'voice_settings' => [
+    'stability'        => 0.5,
+    'similarity_boost' => 0.8,
+    'style'            => 0.2,
+    'use_speaker_boost'=> true,
+  ]
+]);
+
+$ch = curl_init("https://api.elevenlabs.io/v1/text-to-speech/{$voiceId}");
+curl_setopt_array($ch, [
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_POST           => true,
+  CURLOPT_POSTFIELDS     => $payload,
+  CURLOPT_HTTPHEADER     => [
+    'xi-api-key: ' . $apiKey,
+    'Content-Type: application/json',
+    'Accept: audio/mpeg',
+  ],
+  CURLOPT_TIMEOUT => 30,
+]);
+
+$audio    = curl_exec($ch);
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+if (!$audio || $httpCode !== 200) {
+  http_response_code(500);
+  echo json_encode(['error' => 'ElevenLabs API failed. Code: ' . $httpCode]);
+  exit;
+}
+
+// Return audio as base64 so JS can play it
+header('Content-Type: application/json');
+echo json_encode(['audio' => base64_encode($audio)]);

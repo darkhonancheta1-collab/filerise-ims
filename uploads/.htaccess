@@ -1,0 +1,18 @@
+# Block PHP execution in uploads folder
+# Prevents attackers from uploading disguised .php files and running them
+<FilesMatch "\.php$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Also block other executable types
+<FilesMatch "\.(php|php3|php4|php5|phtml|phar|asp|aspx|cgi|pl|sh|exe)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Only allow image files
+<FilesMatch "\.(jpg|jpeg|png|gif|webp)$">
+    Order deny,allow
+    Allow from all
+</FilesMatch>

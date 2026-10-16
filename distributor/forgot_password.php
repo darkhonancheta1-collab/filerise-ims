@@ -1,4 +1,9 @@
 <?php
+/**
+ * distributor/forgot_password.php — Distributor Password Reset Interface
+ *
+ * Allows registered distributors to verify their username and reset their password.
+ */
 require '../config.php';
 session_start();
 

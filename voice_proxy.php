@@ -1,7 +1,20 @@
 <?php
+/**
+ * voice_proxy.php — Text-to-Speech Proxy (ElevenLabs API)
+ *
+ * Receives text via POST JSON, sends it to ElevenLabs TTS API
+ * (using the "Sarah" voice), and returns the audio as base64-encoded
+ * MP3 so the browser JavaScript can play it directly.
+ *
+ * Used by dashboard.php's "Read Stock Alerts" button to vocalize
+ * low-stock warnings. Falls back to browser SpeechSynthesis if this fails.
+ *
+ * Endpoint: POST /voice_proxy.php
+ * Request:  { "text": "..." }
+ * Response: { "audio": "<base64 MP3>" } or { "error": "..." }
+ */
 session_start();
 require 'config.php';
-
 if (!isset($_SESSION['user_id'])) {
   http_response_code(401);
   exit;

@@ -1,4 +1,11 @@
 <?php
+/**
+ * admin/analytics_refresh.php — Asynchronous Multi-Branch Analytics Endpoint
+ *
+ * Computes and returns aggregated statistical metrics for each branch,
+ * including 7-day sales trends, top performing products, low-stock counts,
+ * and growth rates formatted as JSON for admin dashboard charts.
+ */
 require '../config.php';
 session_start();
 

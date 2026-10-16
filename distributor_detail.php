@@ -1,14 +1,33 @@
 <?php
+/**
+ * distributor_detail.php — Individual Distributor Profile & Sales History
+ *
+ * Shows a single distributor's profile, consignment balance, and
+ * full sales history. Features:
+ *   - View distributor info (name, contact, address, photo)
+ *   - Record new consignment sales (product + quantity → stock deducted)
+ *   - View all past sales with date filtering
+ *   - Generate printable receipts (receipt_distributor.php)
+ *   - Delete individual sale records with stock restoration
+ *   - Activity logging for all operations
+ *
+ * Accessed via: distributor_detail.php?id=<distributor_id>
+ * Module-gated via branch_modules (distributors).
+ */
 require 'stock_manager.php';
 require 'config.php';
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
+/* -- Authentication guard -- */
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit;
 }
 
 $user_id        = $_SESSION['user_id'];
+require_once 'branch_modules.php';
+fr_require_module($pdo, 'distributors');
+require_once 'activity_log.php';
 $distributor_id = $_GET['id'] ?? 0;
 
 $stmt = $pdo->prepare("SELECT * FROM distributors WHERE id=? AND user_id=?");
@@ -62,6 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_profile'])) {
         $pdo->prepare("UPDATE distributors SET name=?,gender=?,position=?,contact_number=?,address=?,photo=? WHERE id=? AND user_id=?")
             ->execute([$newName,$newGender,$newPos,$newContact,$newAddress,$newPhoto,$distributor_id,$user_id]);
         $success = "Profile updated successfully!";
+        fr_log_activity($pdo, 'distributors', 'update', "Edited distributor profile \"{$newName}\"");
         $stmt = $pdo->prepare("SELECT * FROM distributors WHERE id=? AND user_id=?");
         $stmt->execute([$distributor_id, $user_id]);
         $distributor = $stmt->fetch();
@@ -75,13 +95,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_sale'])) {
     $quantities= $_POST['quantities'] ?? [];
     if (!$sale_date) $errors[] = "Please choose date.";
     if (!$errors) {
+        $loggedQty = 0;
         foreach ($items as $i => $pid) {
             $qty = intval($quantities[$i] ?? 0);
             if ($qty <= 0) continue;
             $unit = $_POST['units'][$i] ?? 'PCS';
             $pdo->prepare("INSERT INTO distributor_sales (distributor_id,product_id,unit,quantity_sold,sale_date,user_id) VALUES (?,?,?,?,?,?)")
                 ->execute([$distributor_id,$pid,$unit,$qty,$sale_date,$user_id]);
+            $loggedQty += $qty;
         }
+        fr_log_activity($pdo, 'distributors', 'sale', "Recorded sale for distributor \"{$distributor['name']}\" — {$loggedQty} unit(s) on {$sale_date}");
         header("Location: distributor_detail.php?id=$distributor_id&success=1");
         exit;
     }
@@ -366,8 +389,9 @@ $totalDistributors = count($allRanks);
 
 <!-- SIDEBAR -->
 <div class="sidebar">
+<?= fr_locked_style() ?>
     <img src="7.png" alt="Logo" class="logo">
-    <a href="distributor.php">← Back to Distributors</a>
+    <a <?= fr_href('distributor.php') ?>>← Back to Distributors</a>
     <a href="dashboard.php">Dashboard</a>
     <div class="logout" onclick="window.location='logout.php'">Logout</div>
 </div>

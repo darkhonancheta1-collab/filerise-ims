@@ -1,4 +1,10 @@
 <?php
+/**
+ * admin/admin_voice_proxy.php — Admin Voice Recognition & TTS Gateway
+ *
+ * Handles voice queries for the admin chatbot, processing voice prompts
+ * and routing them through the AI assistant pipeline for hands-free admin querying.
+ */
 session_start();
 require 'config.php';
 

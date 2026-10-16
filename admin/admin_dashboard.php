@@ -1,4 +1,20 @@
 <?php
+/**
+ * admin/admin_dashboard.php — Main Admin Dashboard (Company-Wide View)
+ *
+ * The central hub for admins/super admins. Aggregates data across all
+ * branches to display:
+ *   - Company-wide KPIs (total sales today/week/month across all branches)
+ *   - Per-branch sales comparison and ranking
+ *   - Branch filter (view individual or all branches)
+ *   - Top products/distributors company-wide
+ *   - Daily report submission status per branch
+ *   - AJAX date picker for historical sales lookup
+ *   - Analytics charts (sales trends, category breakdown)
+ *   - Admin chatbot (AI assistant for admin-level queries)
+ *
+ * Requires admin session (admin_id).
+ */
 require '../config.php';
 $pageTitle = "Main Admin Dashboard";
 $activePage = "dashboard";

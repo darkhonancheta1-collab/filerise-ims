@@ -1,10 +1,20 @@
 <?php
+/**
+ * daily_sales_record_pdf.php — PDF Export for Daily Sales Record
+ *
+ * Generates a downloadable PDF of the daily sales breakdown.
+ * Uses Dompdf library. Shows all revenue streams (distributor sales,
+ * walk-in sales, membership fees) for the selected date or range.
+ *
+ * Accessed via: daily_sales_record_pdf.php?date=YYYY-MM-DD
+ */
 require 'config.php';
 require 'vendor/autoload.php';
 
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
+/* -- Authentication guard -- */
 session_start();
 if (!isset($_SESSION['user_id'])) exit("Unauthorized");
 

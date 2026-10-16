@@ -1,13 +1,36 @@
 <?php
+/**
+ * returns.php — Product Returns & Upgrades Management
+ *
+ * Handles product returns from distributors. Supports multiple return types:
+ *   - DEFECTIVE: Product is damaged → stock not restored
+ *   - EXCESS: Overstock return → stock is restored to inventory
+ *   - UPGRADE: Product swap/upgrade → old product returned, new one issued
+ *   - EXPIRED: Product past shelf life → stock not restored
+ *
+ * Features:
+ *   - Record returns with reason, quantity, and supporting details
+ *   - Automatic stock adjustments based on return type
+ *   - Upgrade income tracking (price difference)
+ *   - View/filter return history
+ *   - Activity logging for all operations
+ *
+ * Self-healing schema: auto-creates product_returns table if missing.
+ * Module-gated via branch_modules (returns).
+ */
 require 'config.php';
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
+/* -- Authentication guard -- */
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
     exit;
 }
 
 $user_id = $_SESSION['user_id'];
+require_once 'branch_modules.php';
+fr_require_module($pdo, 'returns');
+require_once 'activity_log.php';
 $errors = [];
 $success = '';
 
@@ -101,6 +124,14 @@ if (isset($_GET['lookup_ref']) && trim($_GET['lookup_ref']) !== '') {
         if ($alreadyRetRow) {
             $errors[] = "This transaction (<strong>" . htmlspecialchars($ref) . "</strong>) has already been returned (Return Ref: <strong>" . htmlspecialchars($alreadyRetRow['return_ref']) . "</strong>). The same sale cannot be returned twice.";
             $lookupSale = null; // Hide the form
+        /* ============================================================
+           [SEARCH TAG: RETURN_VALIDITY_PERIOD / RETURN_WINDOW_SECONDS / 86400_SECONDS / 1_DAY_RETURN_LIMIT / RETURN_POLICY_DAYS]
+           Allowed return window: 86400 seconds (1 day).
+           To change:
+             - 1 day  = 86400 (default)
+             - 3 days = 259200
+             - 7 days = 604800
+        ============================================================ */
         } elseif ((time() - strtotime($lookupSale['created_at'])) > 86400) {
             $saleDate = date('M d, Y h:i A', strtotime($lookupSale['created_at']));
             $errors[] = "Returns are only allowed within <strong>1 day</strong> of purchase. This transaction was made on <strong>{$saleDate}</strong> and can no longer be returned.";
@@ -122,6 +153,7 @@ if (isset($_GET['lookup_ref']) && trim($_GET['lookup_ref']) !== '') {
 }
 
 /* ============================================================
+ [SEARCH TAG: SUBMIT_RETURN / PROCESS_PRODUCT_RETURN / RETURN_REPLACEMENT_HANDLER]
  PROCESS RETURN SUBMISSION
 ============================================================ */
 if (isset($_POST['submit_return'])) {
@@ -381,6 +413,7 @@ if (isset($_POST['submit_return'])) {
 
             $pdo->commit();
             $success = $ret_ref;
+            fr_log_activity($pdo, 'returns', $return_type === 'UPGRADE' ? 'upgrade' : 'exchange', "{$return_type} {$ret_ref} for original sale {$orig_ref}" . ($upgradeIncome > 0 ? " (+₱" . number_format($upgradeIncome, 2) . ")" : ''));
 
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -1095,29 +1128,31 @@ $returnHistory = $histStmt->fetchAll();
 
     <!-- SIDEBAR -->
     <div class="sidebar">
+<?= fr_locked_style() ?>
         <img src="7.png" class="logo" alt="Fil-Rise Logo">
 
         <div class="menu-title">Core</div>
         <a href="dashboard.php">Dashboard</a>
-        <a href="ai_forecast.php"
+        <a <?= fr_href('ai_forecast.php') ?>
             style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">AI
             Dashboard</a>
 
         <div class="menu-title">Inventory</div>
-        <a href="product.php">Products</a>
-        <a href="removed_products.php">Archived Products</a>
+        <a <?= fr_href('product.php') ?>>Products</a>
+        <a <?= fr_href('removed_products.php') ?>>Archived Products</a>
 
         <div class="menu-title">Operations</div>
-        <a href="transaction.php">Consignment Transactions</a>
-        <a href="sales.php">Walk-in Sales</a>
-        <a href="returns.php" class="active">Product Returns</a>
-        <a href="stock_requests.php">Stock Requests</a>
-        <a href="daily_records.php">Daily Records</a>
-        <a href="daily_sales_record.php">Daily Sales Record</a>
+        <a <?= fr_href('transaction.php') ?>>Consignment Transactions</a>
+        <a <?= fr_href('sales.php') ?>>Walk-in Sales</a>
+        <a <?= fr_href('returns.php') ?> class="active">Product Returns</a>
+        <a <?= fr_href('stock_requests.php') ?>>Stock Requests</a>
+        <a <?= fr_href('daily_records.php') ?>>Daily Records</a>
+        <a <?= fr_href('daily_sales_record.php') ?>>Daily Sales Record</a>
+        <a href="expenses.php">Expenses</a>
 
         <div class="menu-title">People</div>
-        <a href="distributor.php">Distributors</a>
-        <a href="members.php">Members</a>
+        <a <?= fr_href('distributor.php') ?>>Distributors</a>
+        <a <?= fr_href('members.php') ?>>Members</a>
 
         <div class="logout" onclick="window.location='logout.php'">Logout</div>
     </div>

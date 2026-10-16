@@ -1,12 +1,32 @@
 <?php
+/**
+ * dashboard.php — Main Staff Dashboard
+ *
+ * This is the primary landing page for branch staff after login.
+ * It displays:
+ *   - KPI cards: Total Sales (Today / Week / Month), Expenses, Net Income
+ *   - Top Product This Week & Top Distributor This Month
+ *   - Category-based bar charts (Most Bought Products by Category)
+ *   - Inventory Overview (stock counts, SRP/member values)
+ *   - Low Stock Alerts (popup + notification bell + voice alerts)
+ *   - Daily Report Submission reminders (toast notifications)
+ *   - AJAX endpoint for date-based sales lookup (no full page reload)
+ *   - Live badge for pending inter-branch stock requests
+ *
+ * Includes: config.php, branch_modules.php, chatbot.php,
+ *           ticker.php, lowstock_popup.php, mobile_sidebar.php
+ */
+
 require 'config.php';
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
+/* -- Authentication guard: redirect to login if not logged in -- */
 if (!isset($_SESSION['user_id'])) {
   header('Location: login.php');
   exit;
 }
 $user_id = $_SESSION['user_id'];
+require_once 'branch_modules.php';
 $today = date('Y-m-d');
 
 /* =========================
@@ -183,6 +203,34 @@ $stmt->execute([$user_id, $user_id, $user_id, $user_id]);
 $totalSalesMonth = $stmt->fetchColumn() ?? 0;
 
 /* =========================
+   EXPENSES — Today / This Month
+   (netted against sales for the "Net" cards below)
+========================= */
+$pdo->exec("
+CREATE TABLE IF NOT EXISTS expenses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  category VARCHAR(50) NOT NULL,
+  description VARCHAR(255) NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  expense_date DATE NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX (user_id),
+  INDEX (expense_date)
+)
+");
+$stmt = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE user_id=? AND expense_date=?");
+$stmt->execute([$user_id, $selectedDate]);
+$totalExpensesToday = (float) $stmt->fetchColumn();
+
+$stmt = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE user_id=? AND MONTH(expense_date)=MONTH(CURDATE()) AND YEAR(expense_date)=YEAR(CURDATE())");
+$stmt->execute([$user_id]);
+$totalExpensesMonth = (float) $stmt->fetchColumn();
+
+$netToday = (float) $totalSalesToday - $totalExpensesToday;
+$netMonth = (float) $totalSalesMonth - $totalExpensesMonth;
+
+/* =========================
    TOP SELLING PRODUCT THIS WEEK
 ========================= */
 $stmt = $pdo->prepare("
@@ -229,9 +277,10 @@ ORDER BY total DESC, d.name ASC
 $stmt->execute([$user_id]);
 $topDistributorList = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-/* =========================
-   LOW STOCK ALERT
-========================= */
+/* ============================================================
+   [SEARCH TAG: LOW_STOCK_ALERT / LOW_STOCK_THRESHOLD / INVENTORY_WARNING_LIMIT / REORDER_POINT / STOCK_ALERT_QUANTITY]
+   Default threshold: <= 10 units for BOX, PCS, and BOTTLE
+============================================================ */
 $stmt = $pdo->prepare("
 SELECT name, box_qty, pcs_qty, bottle_qty, unit_type FROM products
 WHERE user_id=? AND (
@@ -523,32 +572,35 @@ $notifCount += count($lowStock);
 <?php include 'lowstock_popup.php'; ?>
 <!-- SIDEBAR -->
 <div class="sidebar">
+<?= fr_locked_style() ?>
   <img src="7.png" class="logo" alt="Fil-Rise Logo">
   <div class="menu-title">Core</div>
   <a href="dashboard.php" class="active">Dashboard</a>
-  <a href="ai_forecast.php" style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">AI Dashboard</a>
+  <a <?= fr_href('ai_forecast.php') ?> style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">AI Dashboard</a>
   <div class="menu-title">Inventory</div>
-  <a href="product.php">Products</a>
-  <a href="removed_products.php">Archived Products</a>
+  <a <?= fr_href('product.php') ?>>Products</a>
+  <a <?= fr_href('removed_products.php') ?>>Archived Products</a>
   <div class="menu-title">Operations</div>
-  <a href="transaction.php">Consignment Transactions</a>
-  <a href="sales.php">Walk-in Sales</a>
-  <a href="returns.php">Product Returns</a>
-  <a href="stock_requests.php">Stock Requests</a>
-  <a href="daily_records.php">Daily Records</a>
-  <a href="daily_sales_record.php">Daily Sales Record</a>
-  <a href="stock_requests.php" id="srDashNavLink">
+  <a <?= fr_href('transaction.php') ?>>Consignment Transactions</a>
+  <a <?= fr_href('sales.php') ?>>Walk-in Sales</a>
+  <a <?= fr_href('returns.php') ?>>Product Returns</a>
+  <a <?= fr_href('stock_requests.php') ?> id="srDashNavLink">
     Stock Requests
     <span id="srDashBadge" style="margin-left:auto;background:#ef4444;color:#fff;font-size:11px;font-weight:700;border-radius:999px;padding:2px 7px;display:none;"></span>
   </a>
+  <a <?= fr_href('daily_records.php') ?>>Daily Records</a>
+  <a <?= fr_href('daily_sales_record.php') ?>>Daily Sales Record</a>
+  <a href="expenses.php">Expenses</a>
   <div class="menu-title">People</div>
-  <a href="distributor.php">Distributors</a>
-  <a href="members.php">Members</a>
+  <a <?= fr_href('distributor.php') ?>>Distributors</a>
+  <a <?= fr_href('members.php') ?>>Members</a>
   <div class="logout" onclick="window.location='logout.php'">Logout</div>
 </div>
 
 <!-- MAIN -->
 <div class="main">
+
+  <?= fr_locked_banner() ?>
 
   <!-- HEADER -->
   <div class="header">
@@ -627,6 +679,28 @@ $notifCount += count($lowStock);
       <div class="value"><?= $topDistributor['name'] ?? 'No Sales' ?></div>
       <div class="sub"><?= $topDistributor['total'] ?? 0 ?> sold</div>
       <i data-lucide="users" class="stat-icon icon-orange"></i>
+    </div>
+  </div>
+
+  <!-- EXPENSES / NET ROW -->
+  <div class="top-stat-row">
+    <div class="top-stat-card border-orange">
+      <div class="label">Expenses (<?= htmlspecialchars($salesDateLabel) ?>)</div>
+      <div class="value" style="color:#dc2626;">₱<?= number_format($totalExpensesToday, 2) ?></div>
+      <div class="sub"><a href="expenses.php" style="color:#374151;">View / log expenses →</a></div>
+      <i data-lucide="receipt" class="stat-icon icon-orange"></i>
+    </div>
+    <div class="top-stat-card <?= $netToday >= 0 ? 'border-green' : 'border-orange' ?>">
+      <div class="label">Net (<?= htmlspecialchars($salesDateLabel) ?>)</div>
+      <div class="value" style="color:<?= $netToday >= 0 ? '#16a34a' : '#dc2626' ?>;">₱<?= number_format($netToday, 2) ?></div>
+      <div class="sub">Sales minus expenses</div>
+      <i data-lucide="wallet" class="stat-icon <?= $netToday >= 0 ? 'icon-green' : 'icon-orange' ?>"></i>
+    </div>
+    <div class="top-stat-card <?= $netMonth >= 0 ? 'border-green' : 'border-orange' ?>">
+      <div class="label">Net This Month</div>
+      <div class="value" style="color:<?= $netMonth >= 0 ? '#16a34a' : '#dc2626' ?>;">₱<?= number_format($netMonth, 2) ?></div>
+      <div class="sub">₱<?= number_format($totalSalesMonth, 2) ?> sales − ₱<?= number_format($totalExpensesMonth, 2) ?> expenses</div>
+      <i data-lucide="calendar-check" class="stat-icon <?= $netMonth >= 0 ? 'icon-green' : 'icon-orange' ?>"></i>
     </div>
   </div>
 

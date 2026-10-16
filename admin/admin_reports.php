@@ -1,4 +1,11 @@
 <?php
+/**
+ * admin/admin_reports.php — Admin Branch Daily Reports Overview
+ *
+ * Lists all end-of-day inventory and sales reports submitted by branch staff.
+ * Allows admins to view submission timestamps, total sales, transaction counts,
+ * and drill into detailed item-by-item breakdown per report.
+ */
 require '../config.php';
 $pageTitle = "Branch Reports";
 $activePage = "reports";
@@ -47,16 +54,20 @@ $reports = $stmt->fetchAll(PDO::FETCH_ASSOC);
               <td class="text-end">₱<?= number_format((float) $r['total_sales'], 2) ?></td>
               <td class="text-center"><?= (int) $r['total_transactions'] ?></td>
               <td class="text-center">
-                <?php
-                $submittedTime = strtotime($r['submitted_at']);
-                $deadline = strtotime($r['report_date'] . ' 18:00:00');
+                <?php if (($r['status'] ?? '') === 'Undone'): ?>
+                  <span class="badge bg-danger">Undone</span>
+                <?php else: ?>
+                  <?php
+                  $submittedTime = strtotime($r['submitted_at']);
+                  $deadline = strtotime($r['report_date'] . ' 18:00:00');
 
-                if ($submittedTime > $deadline) {
-                  echo '<span class="badge bg-warning">Late Submitted</span>';
-                } else {
-                  echo '<span class="badge bg-success">Submitted</span>';
-                }
-                ?>
+                  if ($submittedTime > $deadline) {
+                    echo '<span class="badge bg-warning">Late Submitted</span>';
+                  } else {
+                    echo '<span class="badge bg-success">Submitted</span>';
+                  }
+                  ?>
+                <?php endif; ?>
               </td>
               <td class="text-center">
                 <a class="btn btn-sm btn-primary" href="view_report.php?id=<?= (int) $r['id'] ?>">View</a>

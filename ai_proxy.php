@@ -1,7 +1,19 @@
 <?php
+/**
+ * ai_proxy.php — AI Forecast Backend (JSON API)
+ *
+ * Server-side proxy for the AI Forecast Dashboard (ai_forecast.php).
+ * Receives a sales data prompt from the frontend, fetches live trending
+ * data from multiple sources (Google Trends PH, DuckDuckGo, Reddit PH),
+ * augments the prompt with this market intelligence, and sends it to
+ * Groq LLAMA-3.3-70b API for analysis.
+ *
+ * Returns: { "text": "...", "trends_found": N, "trends_source": "live"|"fallback" }
+ *
+ * Auth: requires active staff or admin session.
+ */
 session_start();
 require 'config.php';
-
 if (!isset($_SESSION['user_id']) && !isset($_SESSION['admin_id'])) {
   http_response_code(401);
   echo json_encode(['error' => 'Unauthorized']);

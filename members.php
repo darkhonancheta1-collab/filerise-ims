@@ -1,17 +1,38 @@
 <?php
+/**
+ * members.php — Member Registration & Management
+ *
+ * Manages branch members (direct-selling enrollees). Features:
+ *   - Register new members with personal info + membership fee
+ *   - Assign package products (IMMUNO + Coffee combos)
+ *   - Auto-deduct package stock on registration
+ *   - View/filter member list with search
+ *   - Edit member details, deactivate members
+ *   - Track membership fees as sales income
+ *   - Activity logging for all CRUD operations
+ *
+ * Module-gated via branch_modules (members).
+ */
 require 'config.php';
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
+/* -- Authentication guard -- */
 if (!isset($_SESSION['user_id'])) {
   header("Location: login.php");
   exit;
 }
 
 $user_id = $_SESSION['user_id'];
+require_once 'branch_modules.php';
+fr_require_module($pdo, 'members');
+require_once 'activity_log.php';
 $success = '';
 $errors  = [];
 
-/* ── Fetch defined packages (IMMUNO + Coffee combos) ── */
+/* ============================================================
+   [SEARCH TAG: MEMBERSHIP_PACKAGES_FETCH / IMMUNO_COFFEE_COMBOS]
+   Fetch defined packages (IMMUNO + Coffee combos)
+============================================================ */
 $stmt = $pdo->prepare("
   SELECT mp.id, mp.package_name, mp.total_price,
          p1.name AS immuno_name, p2.name AS coffee_name,
@@ -44,7 +65,9 @@ $stmt = $pdo->prepare("
 $stmt->execute([$user_id]);
 $coffeeProducts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-/* ── ADD MEMBER ── */
+/* ============================================================
+   [SEARCH TAG: ADD_MEMBER / MEMBER_REGISTRATION / REGISTER_MEMBER / MEMBERSHIP_FEE]
+============================================================ */
 if (isset($_POST['add_member'])) {
   $name       = trim($_POST['full_name']);
   $age        = intval($_POST['age'] ?? 0);
@@ -53,7 +76,7 @@ if (isset($_POST['add_member'])) {
   if (!$name) {
     $errors[] = "Full name is required.";
   } else {
-    // CHECK FOR DUPLICATE NAME (case-insensitive, same user)
+    // [SEARCH TAG: MEMBER_DUPLICATE_CHECK / PREVENT_DUPLICATE_NAME]
     $dupCheck = $pdo->prepare("SELECT COUNT(*) FROM members WHERE LOWER(full_name) = LOWER(?) AND user_id = ?");
     $dupCheck->execute([$name, $user_id]);
     if ($dupCheck->fetchColumn() > 0) {
@@ -62,6 +85,7 @@ if (isset($_POST['add_member'])) {
   }
 
   if (!$errors && $name) {
+    /* [SEARCH TAG: MEMBERSHIP_PACKAGE_SELECTION / PACKAGE_PRICE_CALCULATION] */
     $package_id = intval($_POST['package_id'] ?? 0);
     if ($package_id <= 0) {
       $errors[] = "Please select a membership package.";
@@ -77,6 +101,7 @@ if (isset($_POST['add_member'])) {
       ");
       $stmt->execute([$user_id, $name, $age, $address, $fee, $package_id]);
       $success = "Member added successfully!";
+      fr_log_activity($pdo, 'members', 'add', "Added member \"{$name}\" (₱" . number_format($fee, 2) . " package)");
     }
   }
 }
@@ -145,23 +170,25 @@ $totalRevenue    = array_sum(array_column(array_filter($members, fn($m) => $m['s
 <?php include 'ticker.php'; ?>
 
 <div class="sidebar">
+<?= fr_locked_style() ?>
   <img src="7.png" class="logo" alt="Fil-Rise Logo">
   <div class="menu-title">Core</div>
   <a href="dashboard.php">Dashboard</a>
-  <a href="ai_forecast.php" style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">AI Dashboard</a>
+  <a <?= fr_href('ai_forecast.php') ?> style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">AI Dashboard</a>
   <div class="menu-title">Inventory</div>
-  <a href="product.php">Products</a>
-  <a href="removed_products.php">Archived Products</a>
+  <a <?= fr_href('product.php') ?>>Products</a>
+  <a <?= fr_href('removed_products.php') ?>>Archived Products</a>
   <div class="menu-title">Operations</div>
-  <a href="transaction.php">Consignment Transactions</a>
-  <a href="sales.php">Walk-in Sales</a>
-  <a href="returns.php">Product Returns</a>
-  <a href="stock_requests.php">Stock Requests</a>
-  <a href="daily_records.php">Daily Records</a>
-  <a href="daily_sales_record.php">Daily Sales Record</a>
+  <a <?= fr_href('transaction.php') ?>>Consignment Transactions</a>
+  <a <?= fr_href('sales.php') ?>>Walk-in Sales</a>
+  <a <?= fr_href('returns.php') ?>>Product Returns</a>
+  <a <?= fr_href('stock_requests.php') ?>>Stock Requests</a>
+  <a <?= fr_href('daily_records.php') ?>>Daily Records</a>
+  <a <?= fr_href('daily_sales_record.php') ?>>Daily Sales Record</a>
+  <a href="expenses.php">Expenses</a>
   <div class="menu-title">People</div>
-  <a href="distributor.php">Distributors</a>
-  <a href="members.php" class="active">Members</a>
+  <a <?= fr_href('distributor.php') ?>>Distributors</a>
+  <a <?= fr_href('members.php') ?> class="active">Members</a>
   <div class="logout" onclick="window.location='logout.php'">Logout</div>
 </div>
 

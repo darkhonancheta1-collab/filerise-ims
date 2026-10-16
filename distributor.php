@@ -1,13 +1,31 @@
 <?php
+/**
+ * distributor.php — Distributor Management (CRUD)
+ *
+ * Manages the branch's distributor network. Features:
+ *   - Add new distributors (name, contact, address, photo)
+ *   - Edit distributor details
+ *   - View all distributors in a card-based grid layout
+ *   - Click a distributor card to go to distributor_detail.php
+ *   - Photo uploads validated via security.php helpers
+ *   - Activity logging for all CRUD operations
+ *
+ * Self-healing schema: auto-creates distributors table if missing.
+ * Module-gated via branch_modules (distributors).
+ */
 require 'config.php';
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
+/* -- Authentication guard -- */
 if (!isset($_SESSION['user_id'])) {
   header("Location: login.php");
   exit;
 }
 
 $user_id = $_SESSION['user_id'];
+require_once 'branch_modules.php';
+fr_require_module($pdo, 'distributors');
+require_once 'activity_log.php';
 $errors  = [];
 $success = "";
 
@@ -100,6 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_distributor'])) {
         $pdo->prepare("INSERT INTO distributors (name,gender,position,contact_number,address,photo,user_id) VALUES (?,?,?,?,?,?,?)")
             ->execute([$name,$gender,$position,$contact,$address,$photo,$user_id]);
         $success = "Distributor added successfully!";
+        fr_log_activity($pdo, 'distributors', 'add', "Added distributor \"{$name}\"");
         $rankQuery->execute([$user_id, $user_id]);
         $distributors = $rankQuery->fetchAll();
     }
@@ -257,29 +276,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_distributor'])) {
 <?php include 'ticker.php'; ?>
 
 <div class="sidebar">
+<?= fr_locked_style() ?>
   <img src="7.png" class="logo" alt="Fil-Rise Logo">
   <div class="menu-title">Core</div>
   <a href="dashboard.php">Dashboard</a>
-  <a href="ai_forecast.php" style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">AI Dashboard</a>
+  <a <?= fr_href('ai_forecast.php') ?> style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">AI Dashboard</a>
   <div class="menu-title">Inventory</div>
-  <a href="product.php">Products</a>
-  <a href="removed_products.php">Archived Products</a>
+  <a <?= fr_href('product.php') ?>>Products</a>
+  <a <?= fr_href('removed_products.php') ?>>Archived Products</a>
   <div class="menu-title">Operations</div>
-  <a href="transaction.php">Consignment Transactions</a>
-  <a href="sales.php">Walk-in Sales</a>
-  <a href="returns.php">Product Returns</a>
-  <a href="stock_requests.php">Stock Requests</a>
-  <a href="daily_records.php">Daily Records</a>
-  <a href="daily_sales_record.php">Daily Sales Record</a>
+  <a <?= fr_href('transaction.php') ?>>Consignment Transactions</a>
+  <a <?= fr_href('sales.php') ?>>Walk-in Sales</a>
+  <a <?= fr_href('returns.php') ?>>Product Returns</a>
+  <a <?= fr_href('stock_requests.php') ?>>Stock Requests</a>
+  <a <?= fr_href('daily_records.php') ?>>Daily Records</a>
+  <a <?= fr_href('daily_sales_record.php') ?>>Daily Sales Record</a>
+  <a href="expenses.php">Expenses</a>
   <div class="menu-title">People</div>
   <div class="dropdown">
     <a href="#" class="dropdown-toggle" data-bs-toggle="collapse" data-bs-target="#distributorMenu">Distributors</a>
     <div class="collapse show" id="distributorMenu">
-      <a href="distributor.php" class="active ms-3">Distributor List</a>
-      <a href="monthly_quota.php" class="ms-3">Set Monthly Goal</a>
+      <a <?= fr_href('distributor.php') ?> class="active ms-3">Distributor List</a>
+      <a <?= fr_href('monthly_quota.php') ?> class="ms-3">Set Monthly Goal</a>
     </div>
   </div>
-  <a href="members.php">Members</a>
+  <a <?= fr_href('members.php') ?>>Members</a>
   <div class="logout" onclick="window.location='logout.php'">Logout</div>
 </div>
 

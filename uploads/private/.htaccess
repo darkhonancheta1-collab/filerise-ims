@@ -1,0 +1,11 @@
+# Private uploads (e.g. distributor photos) must never be served directly
+# over HTTP -- they are only accessible through serve_upload.php, which
+# checks the requester's session/ownership before streaming the file.
+# This overrides the parent uploads/.htaccess rule that otherwise allows
+# public access to image files.
+<FilesMatch ".*">
+    Order deny,allow
+    Deny from all
+</FilesMatch>
+
+Options -Indexes

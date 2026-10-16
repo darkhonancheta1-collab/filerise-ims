@@ -1,13 +1,33 @@
 <?php
+/**
+ * ai_forecast.php — AI-Powered Sales Forecasting Dashboard
+ *
+ * Analyzes up to 8 weeks of sales data per product to determine trends
+ * (RISING / STABLE / FALLING) using weighted moving averages. Sends
+ * the trend data to ai_proxy.php (Groq LLAMA API) for AI-generated
+ * business recommendations, restock suggestions, and market insights.
+ *
+ * Features:
+ *   - Weekly sales trend analysis per product (with % change)
+ *   - Trend badges (Rising ↑ / Stable → / Falling ↓)
+ *   - AI-generated narrative with actionable recommendations
+ *   - Real-time PH market trend integration
+ *   - Interactive trend chart (Chart.js)
+ *
+ * Module-gated via branch_modules (ai_forecast).
+ */
 session_start();
 require 'config.php';
 
+/* -- Authentication guard -- */
 if (!isset($_SESSION['user_id'])) {
   header('Location: login.php');
   exit;
 }
 
 $user_id = $_SESSION['user_id'];
+require_once 'branch_modules.php';
+fr_require_module($pdo, 'ai_forecast');
 $today = date('Y-m-d');
 
 /* GET PRODUCTS */
@@ -672,23 +692,25 @@ $chartDataJson = json_encode($chartData);
   <?php include 'ticker.php' ?>
   <!-- SIDEBAR -->
   <div class="sidebar">
+<?= fr_locked_style() ?>
     <img src="7.png" class="logo" alt="Fil-Rise Logo">
     <div class="menu-title">Core</div>
     <a href="dashboard.php">Dashboard</a>
-    <a href="ai_forecast.php" class="active">AI Dashboard</a>
+    <a <?= fr_href('ai_forecast.php') ?> class="active">AI Dashboard</a>
     <div class="menu-title">Inventory</div>
-    <a href="product.php">Products</a>
-    <a href="removed_products.php">Archived Products</a>
+    <a <?= fr_href('product.php') ?>>Products</a>
+    <a <?= fr_href('removed_products.php') ?>>Archived Products</a>
     <div class="menu-title">Operations</div>
-    <a href="transaction.php">Consignment Transactions</a>
-    <a href="sales.php">Walk-in Sales</a>
-    <a href="returns.php">Product Returns</a>
-    <a href="stock_requests.php">Stock Requests</a>
-    <a href="daily_records.php">Daily Records</a>
-    <a href="daily_sales_record.php">Daily Sales Record</a>
+    <a <?= fr_href('transaction.php') ?>>Consignment Transactions</a>
+    <a <?= fr_href('sales.php') ?>>Walk-in Sales</a>
+    <a <?= fr_href('returns.php') ?>>Product Returns</a>
+    <a <?= fr_href('stock_requests.php') ?>>Stock Requests</a>
+    <a <?= fr_href('daily_records.php') ?>>Daily Records</a>
+    <a <?= fr_href('daily_sales_record.php') ?>>Daily Sales Record</a>
+    <a href="expenses.php">Expenses</a>
     <div class="menu-title">People</div>
-    <a href="distributor.php">Distributors</a>
-    <a href="members.php">Members</a>
+    <a <?= fr_href('distributor.php') ?>>Distributors</a>
+    <a <?= fr_href('members.php') ?>>Members</a>
     <div class="logout" onclick="window.location='logout.php'">Logout</div>
   </div>
 

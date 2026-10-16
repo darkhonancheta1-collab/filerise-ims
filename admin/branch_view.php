@@ -1,4 +1,11 @@
 <?php
+/**
+ * admin/branch_view.php — Individual Branch Detail View (Admin)
+ *
+ * Shows detailed stats for a single branch: products, sales, stock
+ * value, recent transactions, and distributor/member counts.
+ * Accessed via: branch_view.php?branch=<branch_name>
+ */
 require '../config.php';
 $pageTitle = "Branch View";
 $activePage = "branches";

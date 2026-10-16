@@ -6,6 +6,7 @@
 
 /* ============================================================
    1. SECURE SESSION START
+   [SEARCH TAG: SESSION_COOKIE_CONFIG / COOKIE_LIFETIME]
 ============================================================ */
 if (session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params([
@@ -19,8 +20,15 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Session timeout — auto logout after 2 hours of inactivity
-// Only apply if user is actually logged in
+/* ============================================================
+   [SEARCH TAG: SESSION_TIMEOUT / SESSION_EXPIRATION / AUTO_LOGOUT_TIME / SESSION_TIME]
+   Auto logout inactive users after 7200 seconds (2 hours).
+   To change inactivity duration:
+     - 15 minutes = 900
+     - 30 minutes = 1800
+     - 1 hour     = 3600
+     - 2 hours    = 7200 (default)
+============================================================ */
 if ((isset($_SESSION['user_id']) || isset($_SESSION['admin_id'])) &&
     isset($_SESSION['last_activity']) &&
     (time() - $_SESSION['last_activity']) > 7200) {
@@ -30,7 +38,7 @@ if ((isset($_SESSION['user_id']) || isset($_SESSION['admin_id'])) &&
     header('Location: ' . ($isAdmin ? '../login.php' : '/filrise/login.php'));
     exit;
 }
-// Only track activity for logged-in users
+// Track last activity timestamp for logged-in sessions [SEARCH TAG: SESSION_ACTIVITY_TRACKER]
 if (isset($_SESSION['user_id']) || isset($_SESSION['admin_id'])) {
     $_SESSION['last_activity'] = time();
 }
@@ -57,7 +65,8 @@ header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
 
 /* ============================================================
    3. RATE LIMITER — blocks brute force on any endpoint
-   Usage: rate_limit('login', 5, 300)  → max 5 attempts per 5 min
+   [SEARCH TAG: RATE_LIMIT / MAX_LOGIN_ATTEMPTS / LOCKOUT_TIME / BRUTE_FORCE_PROTECTION]
+   Usage: rate_limit('login', 5, 300)  → max 5 attempts per 5 min (300 sec)
 ============================================================ */
 function rate_limit(string $key, int $max = 10, int $window = 300): void {
     $skey = 'rl_' . $key . '_' . md5($_SERVER['REMOTE_ADDR'] ?? '');
@@ -79,7 +88,8 @@ function rate_limit(string $key, int $max = 10, int $window = 300): void {
 }
 
 /* ============================================================
-   4. CSRF TOKEN
+   4. CSRF TOKEN GENERATION & VERIFICATION
+   [SEARCH TAG: CSRF_PROTECTION / CSRF_TOKEN / CSRF_VERIFY / FORM_SECURITY]
 ============================================================ */
 function csrf_token(): string {
     if (empty($_SESSION['csrf_token'])) {
@@ -106,7 +116,8 @@ function csrf_verify(): void {
 
 /* ============================================================
    5. SECURE FILE UPLOAD VALIDATOR
-   Usage: validate_upload($_FILES['image'], ['jpg','png','gif','webp'], 2)
+   [SEARCH TAG: FILE_UPLOAD_VALIDATION / MAX_FILE_SIZE / ALLOWED_IMAGE_EXTENSIONS / IMAGE_UPLOAD_SECURITY]
+   Usage: validate_upload($_FILES['image'], ['jpg','png','gif','webp'], 2)  → 2MB max
 ============================================================ */
 function validate_upload(array $file, array $allowed_exts = ['jpg','jpeg','png','gif','webp'], float $max_mb = 2): array {
     $errors = [];
@@ -116,13 +127,13 @@ function validate_upload(array $file, array $allowed_exts = ['jpg','jpeg','png',
         return $errors;
     }
 
-    // Check real file size
+    // Check real file size (Default: 2MB) [SEARCH TAG: MAX_UPLOAD_SIZE_BYTES]
     $max_bytes = $max_mb * 1024 * 1024;
     if ($file['size'] > $max_bytes) {
         $errors[] = "File too large. Maximum size is {$max_mb}MB.";
     }
 
-    // Check extension
+    // Check extension [SEARCH TAG: ALLOWED_FILE_EXTENSIONS]
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if (!in_array($ext, $allowed_exts, true)) {
         $errors[] = 'Invalid file type. Allowed: ' . implode(', ', $allowed_exts);

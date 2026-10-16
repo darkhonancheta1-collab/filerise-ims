@@ -1,13 +1,28 @@
 <?php
+/**
+ * monthly_quota.php — Monthly Distributor Sales Goals & Tracking
+ *
+ * Allows staff to set monthly sales targets (quotas) for each
+ * distributor and track progress towards those goals. Features:
+ *   - Set/edit monthly goals per distributor (target quantity)
+ *   - Visual progress bars showing actual vs. target
+ *   - Month/year navigation
+ *   - Self-healing schema: auto-creates monthly_goals table
+ *
+ * Module-gated via branch_modules (distributors).
+ */
 require 'config.php';
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
+/* -- Authentication guard -- */
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit;
 }
 
 $user_id = $_SESSION['user_id'];
+require_once 'branch_modules.php';
+fr_require_module($pdo, 'distributors');
 $success = "";
 
 $pdo->exec("CREATE TABLE IF NOT EXISTS monthly_goals (
@@ -26,6 +41,9 @@ $catQuery = $pdo->prepare("SELECT DISTINCT category FROM products WHERE user_id=
 $catQuery->execute([$user_id]);
 $categories = $catQuery->fetchAll();
 
+/* ============================================================
+   [SEARCH TAG: SAVE_MONTHLY_GOAL / SET_DISTRIBUTOR_TARGET / QUOTA_CREATION / EDIT_GOAL]
+============================================================ */
 if (isset($_POST['save_goal'])) {
     $goal_types=$_POST['goal_type']??[]; $goal_values=$_POST['goal_value']??[]; $goal_targets=$_POST['goal_target']??[];
     $reward=$_POST['reward']??''; $target_date=$_POST['target_date']??null; $month=date("F");
@@ -54,6 +72,9 @@ $goalStmt=$pdo->prepare("SELECT mg.*,p.name AS product1_name FROM monthly_goals 
 $goalStmt->execute([$user_id]);
 $currentGoal=$goalStmt->fetch();
 
+/* ============================================================
+   [SEARCH TAG: DISTRIBUTOR_GOAL_RANKING / SALES_PROGRESS_CALCULATION / QUOTA_LEADERBOARD]
+============================================================ */
 $rankings=[];
 if($currentGoal){
     $rq=$pdo->prepare("SELECT d.id,d.name,
@@ -273,29 +294,31 @@ body{font-family:'Poppins',sans-serif;min-height:100vh;display:flex;background:v
 <div class='no-print'><?php include 'ticker.php'; ?></div>
 
 <div class="sidebar">
+<?= fr_locked_style() ?>
   <img src="7.png" class="logo" alt="Fil-Rise Logo">
   <div class="menu-title">Core</div>
   <a href="dashboard.php">Dashboard</a>
-  <a href="ai_forecast.php" style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">AI Dashboard</a>
+  <a <?= fr_href('ai_forecast.php') ?> style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">AI Dashboard</a>
   <div class="menu-title">Inventory</div>
-  <a href="product.php">Products</a>
-  <a href="removed_products.php">Archived Products</a>
+  <a <?= fr_href('product.php') ?>>Products</a>
+  <a <?= fr_href('removed_products.php') ?>>Archived Products</a>
   <div class="menu-title">Operations</div>
-  <a href="transaction.php">Consignment Transactions</a>
-  <a href="sales.php">Walk-in Sales</a>
-  <a href="returns.php">Product Returns</a>
-  <a href="stock_requests.php">Stock Requests</a>
-  <a href="daily_records.php">Daily Records</a>
-  <a href="daily_sales_record.php">Daily Sales Record</a>
+  <a <?= fr_href('transaction.php') ?>>Consignment Transactions</a>
+  <a <?= fr_href('sales.php') ?>>Walk-in Sales</a>
+  <a <?= fr_href('returns.php') ?>>Product Returns</a>
+  <a <?= fr_href('stock_requests.php') ?>>Stock Requests</a>
+  <a <?= fr_href('daily_records.php') ?>>Daily Records</a>
+  <a <?= fr_href('daily_sales_record.php') ?>>Daily Sales Record</a>
+  <a href="expenses.php">Expenses</a>
   <div class="menu-title">People</div>
   <div class="dropdown">
     <a href="#" data-bs-toggle="collapse" data-bs-target="#distMenu">Distributors ▾</a>
     <div class="collapse show" id="distMenu">
-      <a href="distributor.php" class="ms-3">Distributor List</a>
-      <a href="monthly_quota.php" class="active ms-3">Monthly Goal</a>
+      <a <?= fr_href('distributor.php') ?> class="ms-3">Distributor List</a>
+      <a <?= fr_href('monthly_quota.php') ?> class="active ms-3">Monthly Goal</a>
     </div>
   </div>
-  <a href="members.php">Members</a>
+  <a <?= fr_href('members.php') ?>>Members</a>
   <div class="logout" onclick="window.location='logout.php'">Logout</div>
 </div>
 

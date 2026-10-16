@@ -1,10 +1,20 @@
 <?php
+/**
+ * daily_records_pdf.php — PDF Export for Daily Inventory Report
+ *
+ * Generates a downloadable PDF of the daily inventory snapshot report.
+ * Uses Dompdf library to render HTML-to-PDF. Fetches the same data
+ * as daily_records.php and formats it into a printable table layout.
+ *
+ * Accessed via: daily_records_pdf.php?date=YYYY-MM-DD
+ */
 require 'config.php';
 require 'vendor/autoload.php';
 
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
+/* -- Authentication guard -- */
 session_start();
 if (!isset($_SESSION['user_id']))
     exit("Unauthorized");

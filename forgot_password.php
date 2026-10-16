@@ -1,6 +1,23 @@
 <?php
+/**
+ * forgot_password.php — Staff Password Reset (4-Step Flow)
+ *
+ * Step 1: Enter username → system verifies it exists and has an email
+ * Step 2: A 6-digit code is emailed via PHPMailer → user enters the code
+ * Step 3: Code verified → user sets a new password (min 8 chars, 1 uppercase, 1 number)
+ * Step 4: Success → redirect to login
+ *
+ * Security features:
+ *   - Rate limiting: 5 failed attempts → locked out for 30 minutes
+ *   - Reset codes expire after 10 minutes
+ *   - Timing-safe hash comparison (hash_equals) for code verification
+ *   - Session-based state tracking to prevent step-skipping
+ *   - Email is masked for display (e.g., jo***@gmail.com)
+ */
 require 'config.php';
+require 'mailer.php';
 
+/* -- Initialize session variables for forgot password flow -- */
 if (!isset($_SESSION)) session_start();
 if (!isset($_SESSION['sfp_attempts']))    $_SESSION['sfp_attempts']    = 0;
 if (!isset($_SESSION['sfp_locked_until'])) $_SESSION['sfp_locked_until'] = 0;
@@ -9,6 +26,13 @@ $step     = (int)($_POST['step'] ?? 1);
 $error    = '';
 $success  = '';
 $username = trim($_POST['username'] ?? '');
+
+// Mask an email for display, e.g. jo***@gmail.com
+function maskEmail(string $email): string {
+  [$local, $domain] = array_pad(explode('@', $email, 2), 2, '');
+  $visible = mb_substr($local, 0, 2);
+  return $visible . str_repeat('*', max(strlen($local) - 2, 3)) . '@' . $domain;
+}
 
 // Check lockout
 $locked = false;
@@ -21,13 +45,17 @@ if ($_SESSION['sfp_locked_until'] > time()) {
 
 if (!$locked && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
-  /* ── STEP 1: Verify username ── */
-  if (isset($_POST['check_username'])) {
+  /* ── STEP 1: Verify username, generate + email a 6-digit code ── */
+  if (isset($_POST['check_username']) || isset($_POST['resend_code'])) {
+    if (isset($_POST['resend_code']) && isset($_SESSION['sfp_username'])) {
+      $username = $_SESSION['sfp_username']; // resend uses the session's username
+    }
+
     if (!$username) {
       $error = 'Please enter your username.';
       $step  = 1;
     } else {
-      $stmt = $pdo->prepare('SELECT id, username, secret_answer FROM users WHERE username = ?');
+      $stmt = $pdo->prepare('SELECT id, username, fullname, email FROM users WHERE username = ?');
       $stmt->execute([$username]);
       $user = $stmt->fetch();
 
@@ -43,31 +71,49 @@ if (!$locked && $_SERVER['REQUEST_METHOD'] === 'POST') {
           $error = "Username not found. {$remaining} attempt(s) remaining.";
           $step  = 1;
         }
-      } elseif (empty($user['secret_answer'])) {
-        $error = 'Password reset is not configured for this account. Please contact your branch admin.';
+      } elseif (empty($user['email'])) {
+        $error = 'No email is linked to this account. Please contact your branch admin.';
         $step  = 1;
       } else {
-        $_SESSION['sfp_username'] = $username;
-        $_SESSION['sfp_user_id']  = $user['id'];
-        $step = 2;
+        $code    = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $expires = date('Y-m-d H:i:s', time() + 600); // 10 minutes
+
+        $pdo->prepare('UPDATE users SET reset_code = ?, reset_code_expires = ? WHERE id = ?')
+            ->execute([$code, $expires, $user['id']]);
+
+        $sent = sendResetCodeEmail($user['email'], $user['fullname'] ?: $user['username'], $code);
+
+        if (!$sent['ok']) {
+          $error = 'Could not send the reset code email. Please try again later or contact your admin.';
+          $step  = 1;
+        } else {
+          $_SESSION['sfp_username']    = $username;
+          $_SESSION['sfp_user_id']     = $user['id'];
+          $_SESSION['sfp_email_masked'] = maskEmail($user['email']);
+          $success = isset($_POST['resend_code']) ? 'A new code has been sent to your email.' : '';
+          $step = 2;
+        }
       }
     }
   }
 
-  /* ── STEP 2: Verify secret answer ── */
+  /* ── STEP 2: Verify the emailed code ── */
   elseif (isset($_POST['check_answer'])) {
-    $answer = strtolower(trim($_POST['secret_answer'] ?? ''));
-    $uid    = $_SESSION['sfp_user_id'] ?? 0;
+    $code = trim($_POST['reset_code'] ?? '');
+    $uid  = $_SESSION['sfp_user_id'] ?? 0;
 
-    if (!$answer || !$uid) {
+    if (!$code || !$uid) {
       $error = 'Session expired. Please start over.';
       $step  = 1;
     } else {
-      $stmt = $pdo->prepare('SELECT secret_answer FROM users WHERE id = ?');
+      $stmt = $pdo->prepare('SELECT reset_code, reset_code_expires FROM users WHERE id = ?');
       $stmt->execute([$uid]);
       $row = $stmt->fetch();
 
-      if ($row && md5($answer) === $row['secret_answer']) {
+      if ($row && $row['reset_code'] && hash_equals($row['reset_code'], $code) &&
+          $row['reset_code_expires'] && strtotime($row['reset_code_expires']) >= time()) {
+
+        $pdo->prepare('UPDATE users SET reset_code = NULL, reset_code_expires = NULL WHERE id = ?')->execute([$uid]);
         $_SESSION['sfp_verified'] = true;
         $_SESSION['sfp_attempts'] = 0;
         $step = 3;
@@ -76,12 +122,12 @@ if (!$locked && $_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($_SESSION['sfp_attempts'] >= 5) {
           $_SESSION['sfp_locked_until'] = time() + 1800;
           $_SESSION['sfp_attempts']     = 0;
-          unset($_SESSION['sfp_username'], $_SESSION['sfp_user_id'], $_SESSION['sfp_verified']);
+          unset($_SESSION['sfp_username'], $_SESSION['sfp_user_id'], $_SESSION['sfp_verified'], $_SESSION['sfp_email_masked']);
           $error = 'Too many failed attempts. Locked for 30 minutes.';
           $step  = 1;
         } else {
           $remaining = 5 - $_SESSION['sfp_attempts'];
-          $error = "Wrong answer. {$remaining} attempt(s) remaining.";
+          $error = "Invalid or expired code. {$remaining} attempt(s) remaining.";
           $step  = 2;
         }
       }
@@ -123,7 +169,8 @@ if (!$locked && $_SERVER['REQUEST_METHOD'] === 'POST') {
 if ($step === 2 && !isset($_SESSION['sfp_username'])) $step = 1;
 if ($step === 3 && !($_SESSION['sfp_verified'] ?? false)) $step = 1;
 
-$username = $_SESSION['sfp_username'] ?? $username;
+$username    = $_SESSION['sfp_username'] ?? $username;
+$emailMasked = $_SESSION['sfp_email_masked'] ?? '';
 ?>
 <!doctype html>
 <html lang="en">
@@ -325,7 +372,7 @@ $username = $_SESSION['sfp_username'] ?? $username;
         <div class="step-line <?= $step>1?'done':'' ?>"></div>
         <div class="step-item">
           <div class="step-circle <?= $step===2?'active':($step>2?'done':'') ?>"><?= $step>2?'✓':'2' ?></div>
-          <div class="step-label <?= $step===2?'active':($step>2?'done':'') ?>">Security</div>
+          <div class="step-label <?= $step===2?'active':($step>2?'done':'') ?>">Verify Code</div>
         </div>
         <div class="step-line <?= $step>2?'done':'' ?>"></div>
         <div class="step-item">
@@ -345,7 +392,7 @@ $username = $_SESSION['sfp_username'] ?? $username;
 
       <?php if ($step === 1): ?>
         <div class="form-title">Forgot Password</div>
-        <div class="form-sub">Enter your username to begin</div>
+        <div class="form-sub">Enter your username and we'll email you a reset code</div>
         <form method="POST">
           <input type="hidden" name="step" value="1">
           <div class="field-group">
@@ -360,25 +407,33 @@ $username = $_SESSION['sfp_username'] ?? $username;
         </form>
 
       <?php elseif ($step === 2): ?>
-        <div class="form-title">Security Check</div>
-        <div class="form-sub">Answer your security question to continue</div>
-        <div class="security-note">🛡️ <span>This step ensures only you can reset your password.</span></div>
+        <div class="form-title">Check Your Email</div>
+        <div class="form-sub">Enter the 6-digit code we sent to <?= htmlspecialchars($emailMasked) ?></div>
+        <div class="security-note">🛡️ <span>The code expires in 10 minutes.</span></div>
+        <?php if ($success): ?>
+          <div class="success-box">✓ <span><?= htmlspecialchars($success) ?></span></div>
+        <?php endif; ?>
         <form method="POST">
           <input type="hidden" name="step" value="2">
           <input type="hidden" name="username" value="<?= htmlspecialchars($username) ?>">
           <div class="field-group">
-            <label>Security Question</label>
-            <div class="question-box">What is the name of the FIL-RISE company owner?</div>
-          </div>
-          <div class="field-group">
-            <label>Your Answer</label>
+            <label>Reset Code</label>
             <div class="field-wrap">
               <span class="field-icon">🔐</span>
-              <input type="text" name="secret_answer" placeholder="Type your answer"
+              <input type="text" name="reset_code" placeholder="Enter 6-digit code"
+                     inputmode="numeric" maxlength="6" pattern="[0-9]{6}"
                      required autofocus autocomplete="off">
             </div>
           </div>
-          <button type="submit" name="check_answer" class="btn-submit">Verify Answer →</button>
+          <button type="submit" name="check_answer" class="btn-submit">Verify Code →</button>
+        </form>
+        <form method="POST" style="margin-top:10px;">
+          <input type="hidden" name="step" value="1">
+          <input type="hidden" name="username" value="<?= htmlspecialchars($username) ?>">
+          <button type="submit" name="resend_code" class="back-link"
+                  style="background:none;border:none;width:100%;cursor:pointer;">
+            Didn't get it? Resend code
+          </button>
         </form>
 
       <?php elseif ($step === 3): ?>

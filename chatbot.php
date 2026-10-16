@@ -1,4 +1,21 @@
-<?php /* FIL-RISE Floating Chatbot Widget — include this in every page before </body> */ ?>
+<?php
+/**
+ * chatbot.php — Floating AI Chatbot Widget (FilBot)
+ *
+ * A reusable floating chat UI widget included on every staff page.
+ * Renders a fixed-position chat button (bottom-right) that opens
+ * a chat window with:
+ *   - Message bubbles (user + bot + error states)
+ *   - Typing indicator animation
+ *   - Quick suggestion chips (rotated after each response)
+ *   - Auto-resizing textarea input
+ *   - Conversation history (last 20 messages, sent to chatbot_api.php)
+ *   - Unread badge on first load
+ *
+ * All AI responses come from chatbot_api.php (Groq LLAMA backend).
+ * Include this file before </body> in every page.
+ */
+?>
 
 <style>
 /* ── FLOATING BUTTON ── */

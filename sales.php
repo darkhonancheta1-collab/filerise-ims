@@ -1,14 +1,32 @@
 <?php
+/**
+ * sales.php — Walk-in Sales (Non-Distributor / Over-the-Counter Sales)
+ *
+ * Handles direct walk-in customer sales (not through distributors).
+ * Features:
+ *   - Create new walk-in sales with multiple items per transaction
+ *   - View daily sales or filter by custom date range
+ *   - Auto-deduct stock using stock_manager.php
+ *   - Print receipts for walk-in transactions
+ *   - Delete sales with stock restoration
+ *   - Activity logging for all operations
+ *
+ * Module-gated via branch_modules (walkin_sales).
+ */
 require 'stock_manager.php';
 require 'config.php';
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
+/* -- Authentication guard -- */
 if (!isset($_SESSION['user_id'])) {
   header("Location: login.php");
   exit;
 }
 
 $user_id = $_SESSION['user_id'];
+require_once 'branch_modules.php';
+fr_require_module($pdo, 'walkin_sales');
+require_once 'activity_log.php';
 $date    = $_GET['date'] ?? date('Y-m-d');
 $mode    = $_GET['mode'] ?? 'current';
 $from    = $_GET['from'] ?? null;
@@ -16,15 +34,18 @@ $to      = $_GET['to']   ?? null;
 $errors   = [];
 $new_sale = isset($_GET['new_sale']) ? intval($_GET['new_sale']) : 0;
 
-/* =========================
-   PROCESS WALK-IN SALE
-========================= */
+/* ============================================================
+   [SEARCH TAG: PROCESS_WALK_IN_SALE / WALKIN_CHECKOUT / SUBMIT_SALE_TRANSACTION]
+============================================================ */
 if (isset($_POST['process_sale'])) {
 
   $customer_name = trim($_POST['customer_name']);
   $member_id     = null;
   $is_member     = false;
 
+  /* ============================================================
+     [SEARCH TAG: MEMBER_LOOKUP / MEMBER_DISCOUNT_ELIGIBILITY / ACTIVE_MEMBER_CHECK]
+  ============================================================ */
   if ($customer_name) {
     $check = $pdo->prepare("SELECT * FROM members WHERE user_id=? AND LOWER(full_name)=LOWER(?) LIMIT 1");
     $check->execute([$user_id, $customer_name]);
@@ -46,6 +67,7 @@ if (isset($_POST['process_sale'])) {
   if (empty($product_ids)) {
     $errors[] = "Please add at least one product.";
   } else {
+    // [SEARCH TAG: STOCK_AVAILABILITY_CHECK / PREVENT_OVERSOLD_INVENTORY]
     foreach ($product_ids as $i => $pid) {
       $pid  = intval($pid);
       $qty  = intval($quantities[$i] ?? 0);
@@ -86,6 +108,7 @@ if (isset($_POST['process_sale'])) {
         $pdo->beginTransaction();
         $pdo->prepare("INSERT INTO walkin_sales (user_id,member_id,total_amount) VALUES (?,?,0)")->execute([$user_id, $member_id]);
         $sale_id = $pdo->lastInsertId();
+        // [SEARCH TAG: REFERENCE_NUMBER_FORMAT / SALE_REF_NO]
         $ref_no  = 'FR-' . date('Ymd') . '-' . str_pad($sale_id, 5, '0', STR_PAD_LEFT);
         $pdo->prepare("UPDATE walkin_sales SET reference_no=? WHERE id=?")->execute([$ref_no, $sale_id]);
 
@@ -102,6 +125,11 @@ if (isset($_POST['process_sale'])) {
           if (!$product) continue;
 
           if (!$unit) $unit = $product['unit_type'];
+          /* ============================================================
+             [SEARCH TAG: PRICING_LOGIC / MEMBER_VS_SRP_PRICE / PIECE_PRICE_FORMULA]
+             Active members get member_price (DP); non-members pay srp_price (SRP).
+             Piece price is calculated as ceil(price / 10).
+          ============================================================ */
           $price = $is_member ? $product['member_price'] : $product['srp_price'];
           if ($unit === 'PCS' && $product['unit_type'] === 'BOX') $price = ceil($price / 10);
 
@@ -113,6 +141,7 @@ if (isset($_POST['process_sale'])) {
 
         $pdo->prepare("UPDATE walkin_sales SET total_amount=? WHERE id=?")->execute([$total, $sale_id]);
         $pdo->commit();
+        fr_log_activity($pdo, 'sales', 'sale', "Walk-in sale {$ref_no} — ₱" . number_format($total, 2) . (count($product_ids) ? ' (' . count($product_ids) . ' item line(s))' : ''));
         header("Location: receipt.php?id=" . $sale_id);
         exit;
       } catch (Exception $e) {
@@ -440,27 +469,29 @@ $walkinSales = $salesStmt->fetchAll();
 
 <!-- SIDEBAR -->
 <div class="sidebar">
+<?= fr_locked_style() ?>
   <img src="7.png" class="logo" alt="Fil-Rise Logo">
 
   <div class="menu-title">Core</div>
   <a href="dashboard.php">Dashboard</a>
-  <a href="ai_forecast.php" style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">AI Dashboard</a>
+  <a <?= fr_href('ai_forecast.php') ?> style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">AI Dashboard</a>
 
   <div class="menu-title">Inventory</div>
-  <a href="product.php">Products</a>
-  <a href="removed_products.php">Archived Products</a>
+  <a <?= fr_href('product.php') ?>>Products</a>
+  <a <?= fr_href('removed_products.php') ?>>Archived Products</a>
 
   <div class="menu-title">Operations</div>
-  <a href="transaction.php">Consignment Transactions</a>
-  <a href="sales.php" class="active">Walk-in Sales</a>
-  <a href="returns.php">Product Returns</a>
-  <a href="stock_requests.php">Stock Requests</a>
-  <a href="daily_records.php">Daily Records</a>
-  <a href="daily_sales_record.php">Daily Sales Record</a>
+  <a <?= fr_href('transaction.php') ?>>Consignment Transactions</a>
+  <a <?= fr_href('sales.php') ?> class="active">Walk-in Sales</a>
+  <a <?= fr_href('returns.php') ?>>Product Returns</a>
+  <a <?= fr_href('stock_requests.php') ?>>Stock Requests</a>
+  <a <?= fr_href('daily_records.php') ?>>Daily Records</a>
+  <a <?= fr_href('daily_sales_record.php') ?>>Daily Sales Record</a>
+  <a href="expenses.php">Expenses</a>
 
   <div class="menu-title">People</div>
-  <a href="distributor.php">Distributors</a>
-  <a href="members.php">Members</a>
+  <a <?= fr_href('distributor.php') ?>>Distributors</a>
+  <a <?= fr_href('members.php') ?>>Members</a>
 
   <div class="logout" onclick="window.location='logout.php'">Logout</div>
 </div>

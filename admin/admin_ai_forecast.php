@@ -1,4 +1,12 @@
 <?php
+/**
+ * admin/admin_ai_forecast.php — Admin AI Forecast Dashboard (Company-Wide)
+ *
+ * Admin version of ai_forecast.php. Aggregates sales data across all
+ * branches (or filtered by a single branch) and runs the same trend
+ * analysis and AI recommendations via ai_proxy.php.
+ * Includes branch selector dropdown for per-branch or company-wide view.
+ */
 require '../config.php';
 $pageTitle  = 'AI Dashboard';
 $activePage = 'ai';

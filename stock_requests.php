@@ -18,6 +18,10 @@ if (!isset($_SESSION['user_id'])) {
 require_once __DIR__ . '/stock_manager.php'; // deductStock() / addStock()
 
 $user_id     = $_SESSION['user_id'];
+require_once 'branch_modules.php';
+fr_require_module($pdo, 'stock_requests');
+require_once 'activity_log.php';
+
 $branch_name = $_SESSION['branch_name'] ?? ('Branch #' . $user_id);
 $errors      = [];
 $success     = '';
@@ -160,6 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $newId = (int) $pdo->lastInsertId();
       sr_log($pdo, $newId, 'REQUESTED', $branch_name, $user_id, "Requested " . sr_unit_label($prod['unit_type'], $qty) . " of {$prod['name']}");
       $success = "Request {$ref} submitted. Other branches can now see it.";
+      fr_log_activity($pdo, 'stock_requests', 'request', "Requested {$qty} " . strtolower($prod['unit_type']) . " of {$prod['name']} ({$ref})");
     }
   }
 
@@ -172,6 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($stmt->rowCount() === 1) {
       sr_log($pdo, $rid, 'CANCELLED', $branch_name, $user_id, 'Cancelled by requesting branch');
       $success = 'Request cancelled.';
+      fr_log_activity($pdo, 'stock_requests', 'cancel', "Cancelled stock request #{$rid}");
     } else {
       $errors[] = 'Unable to cancel — it may already be in progress.';
     }
@@ -225,6 +231,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               sr_log($pdo, $rid, 'SENT', $branch_name, $user_id, "Sent " . sr_unit_label($req['unit_type'], $qtySend) . " of {$req['product_name']} to {$req['requesting_branch']}");
               $pdo->commit();
               $success = "You sent {$qtySend} " . strtolower($req['unit_type']) . " of {$req['product_name']} to {$req['requesting_branch']}.";
+              fr_log_activity($pdo, 'stock_requests', 'send', "Sent {$qtySend} " . strtolower($req['unit_type']) . " of {$req['product_name']} to {$req['requesting_branch']}");
             }
           } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
@@ -259,6 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           sr_log($pdo, $rid, 'RECEIVED', $branch_name, $user_id, "Received " . sr_unit_label($req['unit_type'], (int)$req['qty_sent']) . " of {$req['product_name']} from {$req['fulfilling_branch']}");
           $pdo->commit();
           $success = "Receipt confirmed — stock added to your inventory.";
+          fr_log_activity($pdo, 'stock_requests', 'receive', "Received " . (int)$req['qty_sent'] . " " . strtolower($req['unit_type']) . " of {$req['product_name']} from {$req['fulfilling_branch']}");
         }
       } catch (Exception $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
@@ -348,31 +356,33 @@ foreach ($myRequests as $r) { if ($r['status'] === 'SENT') $awaitingReceiveCount
   <?php include 'ticker.php'; ?>
 
   <div class="sidebar">
+    <?= fr_locked_style() ?>
     <img src="7.png" class="logo" alt="Fil-Rise Logo">
     <div class="menu-title">Core</div>
     <a href="dashboard.php">Dashboard</a>
-    <a href="ai_forecast.php" style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">AI Dashboard</a>
+    <a <?= fr_href('ai_forecast.php') ?> style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">AI Dashboard</a>
 
     <div class="menu-title">Inventory</div>
-    <a href="product.php">Products</a>
-    <a href="removed_products.php">Archived Products</a>
+    <a <?= fr_href('product.php') ?>>Products</a>
+    <a <?= fr_href('removed_products.php') ?>>Archived Products</a>
 
     <div class="menu-title">Operations</div>
-    <a href="transaction.php">Consignment Transactions</a>
-    <a href="sales.php">Walk-in Sales</a>
-    <a href="returns.php">Product Returns</a>
+    <a <?= fr_href('transaction.php') ?>>Consignment Transactions</a>
+    <a <?= fr_href('sales.php') ?>>Walk-in Sales</a>
+    <a <?= fr_href('returns.php') ?>>Product Returns</a>
     
-    <a href="stock_requests.php" class="active" id="srNavLink">
+    <a <?= fr_href('stock_requests.php') ?> class="active" id="srNavLink">
       Stock Requests
       <span class="badge-pill" id="srNavBadge" style="<?= ($incomingCount + $awaitingReceiveCount) > 0 ? '' : 'display:none;' ?>">
         <?= $incomingCount + $awaitingReceiveCount ?>
       </span>
     </a>
-    <a href="daily_records.php">Daily Records</a>
-    <a href="daily_sales_record.php">Daily Sales Record</a>
+    <a <?= fr_href('daily_records.php') ?>>Daily Records</a>
+    <a <?= fr_href('daily_sales_record.php') ?>>Daily Sales Record</a>
+    <a href="expenses.php">Expenses</a>
     <div class="menu-title">People</div>
-    <a href="distributor.php">Distributors</a>
-    <a href="members.php">Members</a>
+    <a <?= fr_href('distributor.php') ?>>Distributors</a>
+    <a <?= fr_href('members.php') ?>>Members</a>
 
     <div class="logout" onclick="window.location='logout.php'">Logout</div>
   </div>

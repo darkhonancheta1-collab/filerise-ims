@@ -1,4 +1,11 @@
 <?php
+/**
+ * admin/view_report.php — Detailed Branch Report Inspector (Admin)
+ *
+ * Displays the complete item-by-item breakdown of a specific daily report
+ * submitted by a branch, including beginning inventory, sales, returns,
+ * and closing stock quantities with total revenue figures.
+ */
 require '../config.php';
 $pageTitle = "View Report";
 $activePage = "reports";
@@ -23,6 +30,14 @@ function peso($n){ return "₱" . number_format((float)$n, 2); }
 ?>
 
 <h3 class="fw-bold mb-3">Branch Report</h3>
+
+<?php if (($report['status'] ?? '') === 'Undone'): ?>
+  <div class="alert alert-danger">
+    This report was <strong>undone</strong> by the branch
+    <?= !empty($report['undone_at']) ? ('on ' . date("F d, Y h:i A", strtotime($report['undone_at']))) : '' ?>.
+    Stock was restored on their end — they will correct the missing item(s) and resend.
+  </div>
+<?php endif; ?>
 
 <div class="cardx p-3 mb-3">
   <div class="row g-2">

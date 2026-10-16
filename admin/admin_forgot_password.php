@@ -1,4 +1,12 @@
 <?php
+/**
+ * admin/admin_forgot_password.php — Admin Password Recovery (3-Step Verification)
+ *
+ * Provides a secure multi-step password reset for admin accounts:
+ *   Step 1: Enter admin username
+ *   Step 2: Answer secret security question (MD5-hashed comparison)
+ *   Step 3: Set and confirm new password
+ */
 require '../config.php';
 
 /*

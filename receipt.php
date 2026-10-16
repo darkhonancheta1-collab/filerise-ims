@@ -1,7 +1,16 @@
 <?php
+/**
+ * receipt.php — Walk-in Sales Receipt (Printable)
+ *
+ * Generates a printable receipt for a single walk-in sale.
+ * Accessed via: receipt.php?id=<sale_id>
+ * Shows: reference number, date, items sold, prices, total amount.
+ * Optimized for thermal/POS printer output.
+ */
 require 'config.php';
 session_start();
 
+/* -- Authentication guard -- */
 if (!isset($_SESSION['user_id'])) {
     exit("Unauthorized");
 }

@@ -1,4 +1,14 @@
 <?php
+/**
+ * admin/branches.php — Branch Management (Admin Panel)
+ *
+ * Allows admins to manage all branch accounts. Features:
+ *   - Create new branch staff accounts (users table)
+ *   - Edit branch details (username, password, branch name)
+ *   - View all branches with summary stats (products, sales, staff)
+ *   - Navigate to individual branch view (branch_view.php)
+ *   - Lock/unlock module access per branch (via branch_module_locks)
+ */
 require '../config.php';
 $pageTitle  = 'Branches';
 $activePage = 'branches';
@@ -16,8 +26,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_branch_account
   $fullname    = trim($_POST['fullname']    ?? '');
   $username    = trim($_POST['username']    ?? '');
   $password    = trim($_POST['password']    ?? '');
-  if ($branch_name===''||$fullname===''||$username===''||$password==='') {
+  $email       = trim($_POST['email']       ?? '');
+  if ($branch_name===''||$fullname===''||$username===''||$password===''||$email==='') {
     $error = 'Please fill all fields.';
+  } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $error = 'Please enter a valid email address.';
   } else {
     $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE username=?');
     $stmt->execute([$username]);
@@ -28,8 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_branch_account
       $secret_answer = trim($_POST['secret_answer'] ?? '');
       $secret_hash   = !empty($secret_answer) ? md5(strtolower($secret_answer)) : null;
 
-      $stmt = $pdo->prepare('INSERT INTO users (fullname,username,password,branch_name,secret_answer) VALUES (?,?,?,?,?)');
-      $stmt->execute([$fullname,$username,$hash,$branch_name,$secret_hash]);
+      $stmt = $pdo->prepare('INSERT INTO users (fullname,username,password,branch_name,secret_answer,email) VALUES (?,?,?,?,?,?)');
+      $stmt->execute([$fullname,$username,$hash,$branch_name,$secret_hash,$email]);
 
       // Handle branch image upload
       if (!empty($_FILES['branch_image']['name'])) {
@@ -54,11 +67,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reset_branch_password
   $new_password   = trim($_POST['new_password'] ?? '');
   $confirm        = trim($_POST['confirm_password'] ?? '');
   $new_answer     = trim($_POST['new_secret_answer'] ?? '');
+  $new_email      = trim($_POST['new_email'] ?? '');
 
   if ($new_password === '' || strlen($new_password) < 6) {
     $error = 'New password must be at least 6 characters.';
   } elseif ($new_password !== $confirm) {
     $error = 'Passwords do not match.';
+  } elseif ($new_email !== '' && !filter_var($new_email, FILTER_VALIDATE_EMAIL)) {
+    $error = 'Please enter a valid email address.';
   } else {
     // Only ever allow resetting accounts that are actual branch accounts
     $stmt = $pdo->prepare("SELECT id, fullname, branch_name FROM users WHERE id=? AND branch_name IS NOT NULL AND branch_name<>''");
@@ -69,20 +85,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reset_branch_password
       $error = 'Branch account not found.';
     } else {
       $hash = password_hash($new_password, PASSWORD_DEFAULT);
-      if ($new_answer !== '') {
-        $pdo->prepare("UPDATE users SET password=?, secret_answer=? WHERE id=?")
-            ->execute([$hash, md5(strtolower($new_answer)), $target_user_id]);
-      } else {
-        $pdo->prepare("UPDATE users SET password=? WHERE id=?")
-            ->execute([$hash, $target_user_id]);
-      }
+
+      $sql    = "UPDATE users SET password=?";
+      $params = [$hash];
+      if ($new_answer !== '') { $sql .= ", secret_answer=?"; $params[] = md5(strtolower($new_answer)); }
+      if ($new_email  !== '') { $sql .= ", email=?";          $params[] = $new_email; }
+      $sql .= " WHERE id=?";
+      $params[] = $target_user_id;
+
+      $pdo->prepare($sql)->execute($params);
       $success = "Password reset for {$target['fullname']} ({$target['branch_name']}). Share the new password with them securely.";
     }
   }
 }
 
 /* ── FETCH DATA ── */
-$stmt = $pdo->query("SELECT id,branch_name,fullname,username FROM users WHERE branch_name IS NOT NULL AND branch_name<>'' ORDER BY branch_name ASC");
+$stmt = $pdo->query("SELECT id,branch_name,fullname,username,email FROM users WHERE branch_name IS NOT NULL AND branch_name<>'' ORDER BY branch_name ASC");
 $branchUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $stmt = $pdo->query("SELECT user_id,COUNT(*) AS cnt FROM products WHERE is_active=1 GROUP BY user_id");
@@ -525,16 +543,13 @@ $emojis  = ['🏢','🏪','🏬','🏭','🏩','🏦','🏗️'];
               <input class="form-control" name="password" type="password" required>
             </div>
             <div class="col-12">
-              <label class="form-label fw-semibold">Security Answer
-                <span style="font-weight:400;color:#6b7280;font-size:12px;">— for Forgot Password</span>
+              <label class="form-label fw-semibold">Email
+                <span style="font-weight:400;color:#6b7280;font-size:12px;">— for Forgot Password code</span>
               </label>
-              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;font-size:13px;color:#64748b;margin-bottom:8px;">
-                🔐 Security Question: <strong style="color:#0f172a;">What is the name of the FIL-RISE company owner?</strong>
-              </div>
-              <input class="form-control" name="secret_answer"
-                     placeholder="Type the answer (e.g. Darkhon James P Ancheta)" required>
+              <input class="form-control" name="email" type="email"
+                     placeholder="e.g. juan.delacruz@gmail.com" required>
               <div style="font-size:11px;color:#94a3b8;margin-top:4px;">
-                This is stored securely and used when the staff forgets their password.
+                A 6-digit reset code will be emailed here whenever this staff uses "Forgot Password".
               </div>
             </div>
             <div class="col-12">
@@ -589,11 +604,12 @@ $emojis  = ['🏢','🏪','🏬','🏭','🏩','🏦','🏗️'];
           </div>
           <div class="mb-1">
             <label class="form-label fw-semibold">
-              Reset Security Answer <span style="font-weight:400;color:#6b7280;font-size:12px;">— optional</span>
+              Update Email <span style="font-weight:400;color:#6b7280;font-size:12px;">— optional</span>
             </label>
-            <input class="form-control" name="new_secret_answer" placeholder="Leave blank to keep the current answer unchanged">
+            <input class="form-control" name="new_email" type="email" id="rpEmail"
+                   placeholder="Leave blank to keep the current email unchanged">
             <div style="font-size:11px;color:#94a3b8;margin-top:4px;">
-              Only needed if the staff also forgot / never set their "Forgot Password" security answer.
+              This is where the "Forgot Password" reset code is emailed to.
             </div>
           </div>
         </div>
@@ -656,7 +672,7 @@ function openBranch(idx) {
       <span class="baccount-dot"></span>
       ${u.fullname}
       <span style="color:#94a3b8;font-size:11px;">(${u.username})</span>
-      <button type="button" class="baccount-reset" onclick="openResetPassword(${u.id}, '${u.fullname.replace(/'/g,"\\'")}', '${u.username.replace(/'/g,"\\'")}', '${b.branch_name.replace(/'/g,"\\'")}')">Reset Password</button>
+      <button type="button" class="baccount-reset" onclick="openResetPassword(${u.id}, '${u.fullname.replace(/'/g,"\\'")}', '${u.username.replace(/'/g,"\\'")}', '${b.branch_name.replace(/'/g,"\\'")}', '${(u.email||'').replace(/'/g,"\\'")}')">Reset Password</button>
     </span>`
   ).join('');
 
@@ -672,11 +688,12 @@ function closeBranch() {
   document.getElementById('branchModal').classList.remove('show');
 }
 
-function openResetPassword(userId, fullname, username, branchName) {
+function openResetPassword(userId, fullname, username, branchName, email) {
   document.getElementById('rpUserId').value   = userId;
   document.getElementById('rpFullname').textContent = fullname;
   document.getElementById('rpUsername').textContent = username;
   document.getElementById('rpBranch').textContent   = branchName;
+  document.getElementById('rpEmail').placeholder = email ? ('Current: ' + email) : 'Leave blank to keep the current email unchanged';
   new bootstrap.Modal(document.getElementById('resetPasswordModal')).show();
 }
 

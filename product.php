@@ -1,14 +1,32 @@
 <?php
+/**
+ * product.php — Product Management (CRUD + Stock)
+ *
+ * Branch staff page for managing the product inventory:
+ *   - Add new products (with image upload, prices, stock unit/quantity)
+ *   - Edit existing products (name, prices, stock levels, image)
+ *   - Add stock to existing products (box/pcs/bottle)
+ *   - Archive/remove products (soft delete via is_active flag)
+ *   - View all active products in a table grouped by product type
+ *   - Low stock badges (Out of Stock / Low Stock / In Stock)
+ *
+ * All actions are logged to the activity_log via fr_log_activity().
+ * Module access is controlled by branch_modules (fr_require_module).
+ * Image uploads are validated via security.php helpers.
+ */
 require 'config.php';
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
-
+/* -- Authentication guard -- */
 if (!isset($_SESSION['user_id'])) {
   header('Location: login.php');
   exit;
 }
 
 $user_id = $_SESSION['user_id'];
+require_once 'branch_modules.php';
+fr_require_module($pdo, 'products');
+require_once 'activity_log.php';
 $errors = [];
 $success = '';
 $imageName = null;
@@ -118,6 +136,7 @@ if (isset($_POST['save_product'])) {
               $bottle,
               $existing['id']
             ]);
+        fr_log_activity($pdo, 'products', 'update', "Restored/merged stock into product \"{$name}\"");
 
       } else {
 
@@ -139,6 +158,7 @@ if (isset($_POST['save_product'])) {
               $pcs,
               $bottle
             ]);
+        fr_log_activity($pdo, 'products', 'add', "Added new product \"{$name}\"");
       }
 
       $success = "Product added or restored successfully!";
@@ -215,6 +235,7 @@ if (isset($_POST['edit_product'])) {
         ]);
 
     $success = "Product updated successfully!";
+    fr_log_activity($pdo, 'products', 'update', "Edited product \"{$name}\"");
   }
 }
 
@@ -245,6 +266,11 @@ if (isset($_POST['add_stock'])) {
       ]);
 
   $success = "New stock added successfully!";
+
+  $nameStmt = $pdo->prepare("SELECT name FROM products WHERE id=? AND user_id=?");
+  $nameStmt->execute([$id, $user_id]);
+  $stockedName = $nameStmt->fetchColumn() ?: "product #{$id}";
+  fr_log_activity($pdo, 'products', 'restock', "Added stock to \"{$stockedName}\" (+{$add_box} box, +{$add_pcs} pcs, +{$add_bottle} bottle)");
 }
 
 /* =============================
@@ -254,6 +280,10 @@ if (isset($_POST['remove_product'])) {
 
   $id = intval($_POST['remove_id']);
 
+  $nameStmt = $pdo->prepare("SELECT name FROM products WHERE id=? AND user_id=?");
+  $nameStmt->execute([$id, $user_id]);
+  $removedName = $nameStmt->fetchColumn() ?: "product #{$id}";
+
   $pdo->prepare("
     UPDATE products 
     SET is_active=0 
@@ -261,6 +291,7 @@ if (isset($_POST['remove_product'])) {
   ")->execute([$id, $user_id]);
 
   $success = "🗑 Product removed successfully!";
+  fr_log_activity($pdo, 'products', 'delete', "Archived/removed product \"{$removedName}\"");
 }
 
 /* =============================
@@ -374,30 +405,32 @@ $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
   <?php include 'ticker.php'; ?>
 
   <div class="sidebar">
+<?= fr_locked_style() ?>
 
     <img src="7.png" class="logo" alt="Fil-Rise Logo">
 
     <div class="menu-title">Core</div>
     <a href="dashboard.php"> Dashboard</a>
-    <a href="ai_forecast.php"
+    <a <?= fr_href('ai_forecast.php') ?>
       style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">
       AI Dashboard</a>
 
     <div class="menu-title">Inventory</div>
-    <a href="product.php" class="active"> Products</a>
-    <a href="removed_products.php"> Archived Products</a>
+    <a <?= fr_href('product.php') ?> class="active"> Products</a>
+    <a <?= fr_href('removed_products.php') ?>> Archived Products</a>
 
     <div class="menu-title">Operations</div>
-    <a href="transaction.php">Consignment Transactions</a>
-    <a href="sales.php"> Walk-in Sales</a>
-    <a href="returns.php">Product Returns</a>
-    <a href="stock_requests.php">Stock Requests</a>
-    <a href="daily_records.php"> Daily Records</a>
-    <a href="daily_sales_record.php"> Daily Sales Record</a>
+    <a <?= fr_href('transaction.php') ?>>Consignment Transactions</a>
+    <a <?= fr_href('sales.php') ?>> Walk-in Sales</a>
+    <a <?= fr_href('returns.php') ?>>Product Returns</a>
+    <a <?= fr_href('stock_requests.php') ?>>Stock Requests</a>
+    <a <?= fr_href('daily_records.php') ?>> Daily Records</a>
+    <a <?= fr_href('daily_sales_record.php') ?>> Daily Sales Record</a>
+    <a href="expenses.php">Expenses</a>
 
     <div class="menu-title">People</div>
-    <a href="distributor.php"> Distributors</a>
-    <a href="members.php"> Members</a>
+    <a <?= fr_href('distributor.php') ?>> Distributors</a>
+    <a <?= fr_href('members.php') ?>> Members</a>
     
 
     <div class="logout" onclick="window.location='logout.php'">

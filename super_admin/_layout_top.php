@@ -1,5 +1,10 @@
 <?php
-// super_admin/_layout_top.php
+/**
+ * super_admin/_layout_top.php — Super Admin Shared Header & Sidebar Navigation
+ *
+ * Provides shared layout HTML head, Poppins fonts, Bootstrap assets, and
+ * the dedicated Super Admin sidebar with system configuration navigation.
+ */
 require __DIR__ . "/auth.php";
 ?>
 <!doctype html>
@@ -14,91 +19,110 @@ require __DIR__ . "/auth.php";
 
   <style>
     :root {
-      --nav: #1c0f0f;
-      --nav2: #2a1414;
-      --primary: #dc2626;
-      --primary2: #f59e0b;
-      --bg: #f4f6fb;
+      --accent: #dc2626;
+      --accent-soft: #fef2f2;
+      --accent-border: #fecaca;
+      --bg: #f7f7f8;
       --card: #ffffff;
-      --muted: #6b7280;
-      --shadow: 0 10px 25px rgba(15,23,42,.08);
-      --radius: 18px;
+      --border: #e4e4e7;
+      --text: #18181b;
+      --muted: #71717a;
+      --radius: 10px;
     }
+
+    * { box-sizing: border-box; }
 
     body {
       font-family: 'Poppins', sans-serif;
       background: var(--bg);
+      color: var(--text);
       margin: 0;
     }
 
+    /* SIDEBAR - plain white, hairline border, no gradients */
     .sidebar {
       position: fixed;
       top: 0;
       left: 0;
       bottom: 0;
-      width: 260px;
-      padding: 22px 18px;
-      background: linear-gradient(180deg, var(--nav), var(--nav2));
-      color: #fff;
+      width: 240px;
+      padding: 24px 16px;
+      background: var(--card);
+      border-right: 1px solid var(--border);
       z-index: 1000;
       overflow-y: auto;
     }
 
-    .brand { display:flex; align-items:center; gap:8px; font-weight:800; letter-spacing:.5px; font-size:14px; opacity:.95; margin-bottom: 4px; }
+    .brand { font-weight: 700; letter-spacing: .2px; font-size: 14px; color: var(--text); margin-bottom: 10px; }
     .brand-badge {
-      display:inline-flex; align-items:center; gap:6px;
-      background: rgba(220,38,38,.18); border: 1px solid rgba(220,38,38,.35);
-      color: #fca5a5; font-size: 10px; font-weight: 700;
-      letter-spacing: 1px; text-transform: uppercase;
-      padding: 4px 10px; border-radius: 999px; margin-bottom: 18px;
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--accent-soft); border: 1px solid var(--accent-border);
+      color: var(--accent); font-size: 10px; font-weight: 700;
+      letter-spacing: .6px; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 999px; margin-bottom: 20px;
     }
 
     .navlink {
       display: flex; align-items: center; gap: 10px;
-      padding: 10px 12px; color: #cbb0af; text-decoration: none;
-      border-radius: 12px; margin: 6px 0; transition: .2s; font-size: 14px;
+      padding: 9px 12px; color: var(--muted); text-decoration: none;
+      border-radius: 8px; margin: 2px 0; font-size: 14px;
+      border-left: 3px solid transparent;
     }
-    .navlink:hover  { background: rgba(220,38,38,.15); color: #fff; }
-    .navlink.active { background: linear-gradient(90deg,var(--primary),var(--primary2)); color: #fff; }
+    .navlink:hover  { background: #f4f4f5; color: var(--text); }
+    .navlink.active { background: var(--accent-soft); color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
 
     .sidebox {
-      margin-top: 18px; padding: 12px;
-      background: rgba(255,255,255,.06);
-      border-radius: 14px; border: 1px solid rgba(255,255,255,.06);
+      margin-top: 20px; padding: 12px;
+      border-top: 1px solid var(--border);
     }
+    .sidebox-label { font-size: 11px; color: var(--muted); margin-top: 12px; }
+    .sidebox-name  { font-weight: 700; font-size: 14px; color: var(--text); }
 
     .logoutbtn {
-      margin-top: 14px; display: inline-block; width: 100%;
-      padding: 10px 12px; text-align: center; border-radius: 12px;
-      text-decoration: none; color: #fff;
-      background: rgba(239,68,68,.18); border: 1px solid rgba(239,68,68,.25);
-      transition: .2s; font-size: 14px;
+      margin-top: 12px; display: inline-block; width: 100%;
+      padding: 9px 12px; text-align: center; border-radius: 8px;
+      text-decoration: none; color: var(--muted);
+      border: 1px solid var(--border);
+      font-size: 13px;
     }
-    .logoutbtn:hover { background: rgba(239,68,68,.35); }
+    .logoutbtn:hover { border-color: var(--accent); color: var(--accent); }
 
-    .main { margin-left: 260px; padding: 26px 22px; min-height: 100vh; }
+    .main { margin-left: 240px; padding: 28px 32px; min-height: 100vh; }
 
     .topbar {
       display: flex; gap: 12px; align-items: center;
-      justify-content: space-between; flex-wrap: wrap; margin-bottom: 18px;
+      justify-content: space-between; flex-wrap: wrap; margin-bottom: 20px;
     }
+    .topbar h3 { font-weight: 700; }
 
+    /* CARDS - flat, hairline border, no shadow */
     .cardx {
-      background: var(--card); border-radius: var(--radius);
-      box-shadow: var(--shadow); border: 1px solid rgba(15,23,42,.06);
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
     }
 
-    .kpi-title { color: var(--muted); font-size:12px; font-weight:600; letter-spacing:.3px; }
-    .kpi-value  { font-size:26px; font-weight:800; margin-top:4px; }
+    .kpi-title { color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .3px; }
+    .kpi-value  { font-size: 24px; font-weight: 700; margin-top: 4px; color: var(--text); }
 
     .pill {
-      background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
-      font-weight: 700; border-radius: 999px; padding: 8px 12px;
+      background: var(--accent-soft); border: 1px solid var(--accent-border); color: var(--accent);
+      font-weight: 600; border-radius: 999px; padding: 7px 12px;
       font-size: 12px; white-space: nowrap;
     }
 
-    .table thead th { font-size:12px; color:#111827; }
-    .table tbody td { font-size:13px; }
+    .table thead th { font-size: 12px; color: var(--text); font-weight: 600; border-bottom: 1px solid var(--border); }
+    .table tbody td { font-size: 13px; border-bottom: 1px solid var(--border); }
+    .table { border-collapse: collapse; }
+
+    .btn-primary, .btn-dark {
+      background: var(--accent) !important;
+      border-color: var(--accent) !important;
+      border-radius: 8px !important;
+      box-shadow: none !important;
+    }
+    .btn-primary:hover, .btn-dark:hover { background: #b91c1c !important; border-color: #b91c1c !important; }
+    .btn-outline-secondary { border-radius: 8px !important; }
 
     .mobile-header { display: none; }
 
@@ -108,40 +132,39 @@ require __DIR__ . "/auth.php";
         align-items: center;
         justify-content: space-between;
         padding: 0 16px;
-        height: 56px;
-        background: linear-gradient(135deg, var(--nav), var(--nav2));
-        color: #fff;
+        height: 52px;
+        background: var(--card);
+        border-bottom: 1px solid var(--border);
+        color: var(--text);
         font-weight: 700;
         position: fixed;
         top: 0; left: 0; right: 0;
         z-index: 99998;
-        box-shadow: 0 2px 8px rgba(0,0,0,.4);
       }
-      .mobile-header span { font-size: 14px; font-weight: 700; color: #fff; }
+      .mobile-header span { font-size: 14px; font-weight: 700; }
       .mobile-header button {
-        border: none;
-        background: rgba(255,255,255,.1);
-        border: 1px solid rgba(255,255,255,.15);
+        border: 1px solid var(--border);
+        background: var(--card);
         border-radius: 8px;
-        width: 38px; height: 38px;
-        color: #fff;
-        font-size: 18px;
+        width: 36px; height: 36px;
+        color: var(--text);
+        font-size: 16px;
         cursor: pointer;
         display: flex; align-items: center; justify-content: center;
       }
       .sidebar {
         position: fixed;
-        left: -260px;
-        width: 260px;
+        left: -240px;
+        width: 240px;
         height: 100%;
-        transition: .3s;
+        transition: .2s;
         z-index: 99999;
         top: 0;
       }
       .sidebar.open { left: 0; }
       .main {
         margin-left: 0 !important;
-        margin-top: 56px !important;
+        margin-top: 52px !important;
         padding: 16px !important;
         width: 100% !important;
         box-sizing: border-box !important;
@@ -150,7 +173,7 @@ require __DIR__ . "/auth.php";
       html, body { overflow-x: hidden !important; max-width: 100vw !important; }
     }
 
-    #overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; z-index:99997; }
+    #overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:none; z-index:99997; }
     #overlay.show { display:block; }
   </style>
 </head>
@@ -163,23 +186,24 @@ require __DIR__ . "/auth.php";
 <div id="overlay" onclick="closeMenu()"></div>
 
 <div class="sidebar" id="sidebar">
-  <div class="brand">FIL-RISE • SUPER ADMIN</div>
-  <div class="brand-badge">🔒 Restricted Access</div>
+  <div class="brand">FIL-RISE · SUPER ADMIN</div>
+  <div class="brand-badge">Restricted Access</div>
 
   <a class="navlink <?= ($activePage??'') === 'super_admin_dashboard' ? 'active' : '' ?>" href="super_admin_dashboard.php">Dashboard</a>
   <a class="navlink <?= ($activePage??'') === 'all_users'             ? 'active' : '' ?>" href="all_users.php">All Users</a>
   <a class="navlink <?= ($activePage??'') === 'roles_permissions'     ? 'active' : '' ?>" href="roles_permissions.php">Roles &amp; Permissions</a>
   <a class="navlink <?= ($activePage??'') === 'branch_modules'        ? 'active' : '' ?>" href="branch_modules.php">Branch Modules</a>
+  <a class="navlink <?= ($activePage??'') === 'activity_log'          ? 'active' : '' ?>" href="activity_log.php">Activity Log</a>
 
   <div class="sidebox">
-    <div style="font-size:12px;color:#cbb0af;">Logged in as:</div>
-    <div style="font-weight:800;"><?= htmlspecialchars($_SESSION['admin_name'] ?? 'Super Admin') ?></div>
+    <div class="sidebox-label">Logged in as</div>
+    <div class="sidebox-name"><?= htmlspecialchars($_SESSION['admin_name'] ?? 'Super Admin') ?></div>
     <a class="logoutbtn" href="../admin/logout.php">Logout</a>
   </div>
 </div>
 
 <div class="mobile-header d-lg-none">
-  <span>FIL-RISE • SUPER ADMIN</span>
+  <span>FIL-RISE · SUPER ADMIN</span>
   <button onclick="openMenu()">☰</button>
 </div>
 

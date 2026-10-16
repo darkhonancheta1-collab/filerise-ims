@@ -1,4 +1,19 @@
 <?php
+/**
+ * login.php — Unified Login Page (Staff + Admin)
+ *
+ * Handles authentication for both admin users (admins table) and
+ * branch staff users (users table). On successful login:
+ *   - Admins/Super Admins → redirected to admin/admin_dashboard.php
+ *   - Branch Staff → redirected to dashboard.php
+ *
+ * Security features:
+ *   - Rate limiting (5 attempts per 5 minutes per IP)
+ *   - CSRF token verification
+ *   - Session regeneration on login (prevents session fixation)
+ *   - Brute-force delay (1 second sleep on failed login)
+ *   - Self-healing schema: auto-adds 'role' columns if missing
+ */
 require 'config.php';
 $errors = [];
 
@@ -7,8 +22,11 @@ $errors = [];
 try { $pdo->exec("ALTER TABLE admins ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'admin'"); } catch (Exception $e) {}
 try { $pdo->exec("ALTER TABLE users  ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'staff'"); } catch (Exception $e) {}
 
+/* ============================================================
+   [SEARCH TAG: LOGIN_HANDLER / LOGIN_AUTHENTICATION / LOGIN_PROCESS / SUBMIT_LOGIN]
+============================================================ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Rate limit: max 5 login attempts per 5 minutes per IP
+    // [SEARCH TAG: LOGIN_RATE_LIMIT / BRUTE_FORCE_RATE_LIMIT]
     rate_limit('login', 5, 300);
     csrf_verify();
 
@@ -25,6 +43,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stmt->execute([$username]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
+    /* ============================================================
+       [SEARCH TAG: ADMIN_LOGIN_CHECK / ADMIN_SESSION_VARS / ADMIN_REDIRECT / PASSWORD_VERIFY]
+    ============================================================ */
     if ($admin && password_verify($password, $admin['password'])) {
         // Fix: Regenerate session ID on login (prevents session fixation)
         session_regenerate_secure();
@@ -34,6 +55,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['role']       = $admin['role'] ?: 'admin'; // 'super_admin' or 'admin'
         header('Location: admin/admin_dashboard.php');
         exit;
+    /* ============================================================
+       [SEARCH TAG: STAFF_LOGIN_CHECK / STAFF_SESSION_VARS / STAFF_REDIRECT / USER_SESSION_START]
+    ============================================================ */
     } elseif ($user && password_verify($password, $user['password'])) {
         // Fix: Regenerate session ID on login (prevents session fixation)
         session_regenerate_secure();
@@ -46,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: dashboard.php');
         exit;
     } else {
-        // Fix: Brute-force delay (makes automated attacks slower)
+        // [SEARCH TAG: FAILED_LOGIN_DELAY / BRUTE_FORCE_SLEEP / INVALID_CREDENTIALS]
         sleep(1);
         $errors[] = 'Invalid username or password.';
     }

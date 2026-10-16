@@ -1,4 +1,13 @@
 <?php
+/**
+ * admin/admin_live_refresh.php — Real-Time Admin Live Metrics Polling API
+ *
+ * Polled via AJAX by the main admin dashboard every few seconds.
+ * Returns JSON containing updated real-time stats:
+ *   - Total sales today, this week, this month
+ *   - Transaction count today
+ *   - Recent transactions and branch comparison data
+ */
 require '../config.php';
 require __DIR__ . '/auth.php';
 

@@ -1,7 +1,21 @@
 <?php
+/**
+ * chatbot_api.php — FilBot AI Backend (JSON API)
+ *
+ * Receives chat messages via POST (JSON body) from chatbot.php.
+ * Fetches real-time branch data (low stock, top products, sales totals,
+ * distributor rankings, PH trends) to build a rich system prompt.
+ * Sends the prompt + conversation history to Groq LLAMA-3.3-70b API
+ * and returns the AI's reply as JSON.
+ *
+ * Endpoint: POST /chatbot_api.php
+ * Request:  { "message": "...", "history": [...] }
+ * Response: { "reply": "..." } or { "error": "..." }
+ *
+ * Auth: requires active staff session (user_id).
+ */
 session_start();
 require 'config.php';
-
 if (!isset($_SESSION['user_id'])) {
   http_response_code(401);
   echo json_encode(['error' => 'Unauthorized']);

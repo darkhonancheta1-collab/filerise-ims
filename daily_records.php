@@ -1,17 +1,74 @@
 <?php
+/**
+ * daily_records.php — Daily Inventory Report (Branch Report Submission)
+ *
+ * Staff must submit a daily inventory report before 6:00 PM. The report
+ * captures a snapshot of all product stock levels for the day and is
+ * sent to the admin for review. Features:
+ *   - Auto-populates current stock levels for all active products
+ *   - Submit daily report (creates branch_reports + branch_report_items)
+ *   - View past submitted reports with date navigation
+ *   - Undo/resubmit capability for same-day reports
+ *   - PDF export via daily_records_pdf.php
+ *   - Late submission warnings (after 6 PM)
+ *
+ * Module-gated via branch_modules (daily_records).
+ */
 require 'config.php';
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
+/* -- Authentication guard -- */
 if (!isset($_SESSION['user_id'])) {
   header("Location: login.php");
   exit;
 }
 
 $user_id = $_SESSION['user_id'];
+require_once 'branch_modules.php';
+require_once 'activity_log.php';
+fr_require_module($pdo, 'daily_records');
+
+/* Self-healing schema: lets a submitted report be undone (safe to run repeatedly) */
+try { $pdo->exec("ALTER TABLE branch_reports ADD COLUMN undone_at DATETIME NULL"); } catch (Exception $e) {}
 $date = $_GET['date'] ?? date('Y-m-d');
 $mode = $_GET['mode'] ?? 'current';
 $from = $_GET['from'] ?? null;
 $to = $_GET['to'] ?? null;
+$week = $_GET['week'] ?? null;
+$month = $_GET['month'] ?? null;
+$month_week = $_GET['month_week'] ?? null;
+
+/* Preserve what the staff actually picked (for the dropdown + header label),
+   then resolve WEEK / MONTH into a normal from/to range so all the existing
+   'range' logic below can be reused as-is. */
+$selectedMode = $mode;
+
+if ($mode === 'week' && $week && preg_match('/^(\d{4})-W(\d{2})$/', $week, $wm)) {
+  $wdt = new DateTime();
+  $wdt->setISODate((int)$wm[1], (int)$wm[2]);
+  $from = $wdt->format('Y-m-d');
+  $wdt->modify('+6 days');
+  $to = $wdt->format('Y-m-d');
+  $mode = 'range';
+} elseif ($mode === 'month' && $month && preg_match('/^\d{4}-\d{2}$/', $month)) {
+  $from = date('Y-m-01', strtotime($month . '-01'));
+  $to   = date('Y-m-t', strtotime($month . '-01'));
+
+  /* Optional drill-down: a specific week WITHIN the chosen month
+     (Week 1 = days 1-7, Week 2 = 8-14, Week 3 = 15-21, Week 4 = 22-28, Week 5 = 29-end) */
+  if ($month_week !== null && $month_week !== '' && ctype_digit((string) $month_week)) {
+    $wk = (int) $month_week;
+    $daysInMonth = (int) date('t', strtotime($from));
+    $dayStart = ($wk - 1) * 7 + 1;
+    $dayEnd = min($wk * 7, $daysInMonth);
+    if ($wk >= 1 && $wk <= 5 && $dayStart <= $daysInMonth) {
+      $from = date('Y-m-', strtotime($from)) . str_pad((string) $dayStart, 2, '0', STR_PAD_LEFT);
+      $to   = date('Y-m-', strtotime($to))   . str_pad((string) $dayEnd, 2, '0', STR_PAD_LEFT);
+    }
+  }
+
+  $mode = 'range';
+}
 
 
 /* ============================
@@ -257,8 +314,9 @@ if (isset($_POST['send_report'])) {
     $branch = "Branch #" . $user_id;
 
   // check duplicate (same branch + same date range start/end)
-  // (simpler: lock by report_date only)
-  $stmt = $pdo->prepare("SELECT id FROM branch_reports WHERE user_id=? AND report_date=? LIMIT 1");
+  // (simpler: lock by report_date only) — ignore reports that were undone,
+  // so the branch can correct and resubmit them
+  $stmt = $pdo->prepare("SELECT id FROM branch_reports WHERE user_id=? AND report_date=? AND (status IS NULL OR status <> 'Undone') LIMIT 1");
   $stmt->execute([$user_id, $start]);
   if ($stmt->fetch()) {
     $success = "Daily report already submitted for that date.";
@@ -366,6 +424,58 @@ if (isset($_POST['send_report'])) {
 
 }
 
+/* ===============================
+UNDO A SUBMITTED DAILY REPORT
+(gives the stock back and lets the branch fix + resend it;
+ the report row is kept — marked 'Undone' — so the Main Admin
+ can still see it happened)
+================================*/
+if (isset($_POST['undo_report'])) {
+
+  $undoId = (int) ($_POST['report_id'] ?? 0);
+
+  $stmt = $pdo->prepare("SELECT * FROM branch_reports WHERE id=? AND user_id=? AND status='Submitted' LIMIT 1");
+  $stmt->execute([$undoId, $user_id]);
+  $reportToUndo = $stmt->fetch(PDO::FETCH_ASSOC);
+
+  if (!$reportToUndo) {
+    $success = "That report can't be undone (already undone or not found).";
+  } else {
+
+    $undoItems = json_decode($reportToUndo['report_data'] ?? '[]', true);
+    if (is_array($undoItems)) {
+      foreach ($undoItems as $it) {
+        $pdo->prepare("
+          UPDATE products
+          SET box_qty = box_qty + ?,
+              pcs_qty = pcs_qty + ?,
+              bottle_qty = bottle_qty + ?
+          WHERE id=? AND user_id=?
+        ")->execute([
+          (int) ($it['sold_box'] ?? 0),
+          (int) ($it['sold_pcs'] ?? 0),
+          (int) ($it['sold_bottle'] ?? 0),
+          $it['product_id'] ?? 0,
+          $user_id
+        ]);
+      }
+    }
+
+    $pdo->prepare("UPDATE branch_reports SET status='Undone', undone_at=NOW() WHERE id=?")
+        ->execute([$undoId]);
+
+    fr_log_activity(
+      $pdo,
+      'daily_records',
+      'undo',
+      "Undid the daily report for " . date('F d, Y', strtotime($reportToUndo['report_date'])) .
+      " — stock was restored so it can be corrected and resent. Main Admin can see this in the report status."
+    );
+
+    $success = "Report undone and stock restored. Record the missed item(s) and send the report again for that date.";
+  }
+}
+
 /* ============================
    FETCH RETURNS SUMMARY FOR DISPLAY
 ============================= */
@@ -395,6 +505,20 @@ foreach ($retSummaryStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
 $totalExchanges = (int)($returnsSummary['EXCHANGE']['cnt'] ?? 0);
 $totalUpgrades  = (int)($returnsSummary['UPGRADE']['cnt'] ?? 0);
 $totalUpgradeIncome = (float)($returnsSummary['UPGRADE']['income'] ?? 0);
+
+/* ============================
+   REPORT STATUS FOR THE DATE BEING VIEWED
+   (drives the "Undo Report" button and the "Undone" banner)
+============================= */
+$displayReportDate = ($mode === 'range' && $from) ? $from : $date;
+$stmt = $pdo->prepare("
+  SELECT id, status, undone_at
+  FROM branch_reports
+  WHERE user_id=? AND report_date=?
+  ORDER BY id DESC LIMIT 1
+");
+$stmt->execute([$user_id, $displayReportDate]);
+$currentReport = $stmt->fetch(PDO::FETCH_ASSOC);
 
 ?>
 <!doctype html>
@@ -515,30 +639,32 @@ $totalUpgradeIncome = (float)($returnsSummary['UPGRADE']['income'] ?? 0);
 <body>
   <?php include 'ticker.php'; ?>
   <div class="sidebar">
+<?= fr_locked_style() ?>
 
     <img src="7.png" class="logo" alt="Fil-Rise Logo">
 
     <div class="menu-title">Core</div>
     <a href="dashboard.php"> Dashboard</a>
-    <a href="ai_forecast.php"
+    <a <?= fr_href('ai_forecast.php') ?>
       style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">
       AI Dashboard</a>
       
     <div class="menu-title">Inventory</div>
-    <a href="product.php"> Products</a>
-    <a href="removed_products.php"> Archived Products</a>
+    <a <?= fr_href('product.php') ?>> Products</a>
+    <a <?= fr_href('removed_products.php') ?>> Archived Products</a>
 
     <div class="menu-title">Operations</div>
-    <a href="transaction.php">Consignment Transactions</a>
-    <a href="sales.php"> Walk-in Sales</a>
-    <a href="returns.php">Product Returns</a>
-    <a href="stock_requests.php">Stock Requests</a>
-    <a href="daily_records.php" class="active"> Daily Records</a>
-    <a href="daily_sales_record.php"> Daily Sales Record</a>
+    <a <?= fr_href('transaction.php') ?>>Consignment Transactions</a>
+    <a <?= fr_href('sales.php') ?>> Walk-in Sales</a>
+    <a <?= fr_href('returns.php') ?>>Product Returns</a>
+    <a <?= fr_href('stock_requests.php') ?>>Stock Requests</a>
+    <a <?= fr_href('daily_records.php') ?> class="active"> Daily Records</a>
+    <a <?= fr_href('daily_sales_record.php') ?>> Daily Sales Record</a>
+    <a href="expenses.php">Expenses</a>
 
     <div class="menu-title">People</div>
-    <a href="distributor.php"> Distributors</a>
-    <a href="members.php"> Members</a>
+    <a <?= fr_href('distributor.php') ?>> Distributors</a>
+    <a <?= fr_href('members.php') ?>> Members</a>
 
     <div class="logout" onclick="window.location='logout.php'">
       Logout
@@ -550,6 +676,13 @@ $totalUpgradeIncome = (float)($returnsSummary['UPGRADE']['income'] ?? 0);
     <?php if (!empty($success)): ?>
       <div class="alert alert-success">
         <?= $success ?>
+      </div>
+    <?php endif; ?>
+    <?php if ($currentReport && $currentReport['status'] === 'Undone'): ?>
+      <div class="alert alert-warning no-print">
+        This report was <strong>undone</strong> on
+        <?= date('M d, Y h:i A', strtotime($currentReport['undone_at'])) ?>
+        so the stock was restored. Record the missed item(s) then send the report again for this date.
       </div>
     <?php endif; ?>
     <div class="mb-4 no-print">
@@ -571,8 +704,10 @@ $totalUpgradeIncome = (float)($returnsSummary['UPGRADE']['income'] ?? 0);
                 <div class="col-md-4">
                   <label class="form-label fw-semibold">Record Type</label>
                   <select name="mode" id="modeSelect" class="form-select">
-                    <option value="current" <?= $mode === 'current' ? 'selected' : '' ?>>Current Record</option>
-                    <option value="range" <?= $mode === 'range' ? 'selected' : '' ?>>Previous Record</option>
+                    <option value="current" <?= $selectedMode === 'current' ? 'selected' : '' ?>>Current Record</option>
+                    <option value="range" <?= $selectedMode === 'range' ? 'selected' : '' ?>>Previous Record</option>
+                    <option value="week" <?= $selectedMode === 'week' ? 'selected' : '' ?>>Weekly Record</option>
+                    <option value="month" <?= $selectedMode === 'month' ? 'selected' : '' ?>>Monthly Record</option>
                   </select>
                 </div>
 
@@ -587,6 +722,28 @@ $totalUpgradeIncome = (float)($returnsSummary['UPGRADE']['income'] ?? 0);
                     <input type="date" name="from" value="<?= $from ?>" class="form-control">
                     <input type="date" name="to" value="<?= $to ?>" class="form-control">
                   </div>
+                </div>
+
+                <div class="col-md-4 d-none" id="weekPicker">
+                  <label class="form-label fw-semibold">Week</label>
+                  <input type="week" name="week" value="<?= htmlspecialchars($week ?? '') ?>" class="form-control">
+                </div>
+
+                <div class="col-md-4 d-none" id="monthPicker">
+                  <label class="form-label fw-semibold">Month</label>
+                  <input type="month" name="month" id="monthInput" value="<?= htmlspecialchars($month ?? '') ?>" class="form-control">
+                </div>
+
+                <div class="col-md-4 d-none" id="monthWeekPicker">
+                  <label class="form-label fw-semibold">Week of Month</label>
+                  <select name="month_week" id="monthWeekSelect" class="form-select">
+                    <option value="">Whole Month</option>
+                    <option value="1" <?= $month_week === '1' ? 'selected' : '' ?>>Week 1</option>
+                    <option value="2" <?= $month_week === '2' ? 'selected' : '' ?>>Week 2</option>
+                    <option value="3" <?= $month_week === '3' ? 'selected' : '' ?>>Week 3</option>
+                    <option value="4" <?= $month_week === '4' ? 'selected' : '' ?>>Week 4</option>
+                    <option value="5" <?= $month_week === '5' ? 'selected' : '' ?>>Week 5</option>
+                  </select>
                 </div>
 
               </div>
@@ -610,6 +767,17 @@ $totalUpgradeIncome = (float)($returnsSummary['UPGRADE']['income'] ?? 0);
           Send Daily Report
         </button>
       </form>
+
+      <!-- UNDO REPORT (only shown when the report for this date is still Submitted) -->
+      <?php if ($currentReport && $currentReport['status'] === 'Submitted'): ?>
+        <form method="POST" onsubmit="return confirm('Undo this report? Stock will be restored and the Main Admin will see it was undone.');">
+          <input type="hidden" name="undo_report" value="1">
+          <input type="hidden" name="report_id" value="<?= (int) $currentReport['id'] ?>">
+          <button type="submit" class="btn btn-warning">
+            Undo Report
+          </button>
+        </form>
+      <?php endif; ?>
 
       <!-- LOAD -->
 
@@ -868,17 +1036,51 @@ $totalUpgradeIncome = (float)($returnsSummary['UPGRADE']['income'] ?? 0);
     const modeSelect = document.getElementById("modeSelect");
     const singleDate = document.getElementById("singleDate");
     const rangeDate = document.getElementById("rangeDate");
+    const weekPicker = document.getElementById("weekPicker");
+    const monthPicker = document.getElementById("monthPicker");
+    const monthWeekPicker = document.getElementById("monthWeekPicker");
+    const monthInput = document.getElementById("monthInput");
+    const monthWeekSelect = document.getElementById("monthWeekSelect");
 
-    function toggleMode() {
-      if (modeSelect.value === "range") {
-        singleDate.classList.add("d-none");
-        rangeDate.classList.remove("d-none");
-      } else {
-        singleDate.classList.remove("d-none");
-        rangeDate.classList.add("d-none");
+    function updateMonthWeekLabels() {
+      if (!monthInput.value) return;
+      const [y, m] = monthInput.value.split("-").map(Number);
+      const daysInMonth = new Date(y, m, 0).getDate();
+      for (let w = 1; w <= 5; w++) {
+        const start = (w - 1) * 7 + 1;
+        const end = Math.min(w * 7, daysInMonth);
+        const opt = monthWeekSelect.options[w]; // index 0 = "Whole Month"
+        if (start > daysInMonth) {
+          opt.disabled = true;
+          opt.textContent = "Week " + w;
+        } else {
+          opt.disabled = false;
+          opt.textContent = "Week " + w + " (" + start + "\u2013" + end + ")";
+        }
       }
     }
 
+    function toggleMode() {
+      singleDate.classList.add("d-none");
+      rangeDate.classList.add("d-none");
+      weekPicker.classList.add("d-none");
+      monthPicker.classList.add("d-none");
+      monthWeekPicker.classList.add("d-none");
+
+      if (modeSelect.value === "range") {
+        rangeDate.classList.remove("d-none");
+      } else if (modeSelect.value === "week") {
+        weekPicker.classList.remove("d-none");
+      } else if (modeSelect.value === "month") {
+        monthPicker.classList.remove("d-none");
+        monthWeekPicker.classList.remove("d-none");
+        updateMonthWeekLabels();
+      } else {
+        singleDate.classList.remove("d-none");
+      }
+    }
+
+    monthInput.addEventListener("change", updateMonthWeekLabels);
     modeSelect.addEventListener("change", toggleMode);
     toggleMode();
   </script>

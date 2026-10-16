@@ -1,14 +1,31 @@
 <?php
+/**
+ * transaction.php — Consignment Transactions (Distributor Sales)
+ *
+ * Manages consignment-based sales where products are sold through
+ * distributors. Features:
+ *   - Record new distributor sales (product, quantity, unit type)
+ *   - Auto-deduct stock using stock_manager.php
+ *   - View/filter transaction history by date range
+ *   - Print receipts for individual transactions
+ *   - Delete transactions with stock restoration
+ *   - Activity logging for all operations
+ *
+ * This page is module-gated via branch_modules (transactions).
+ */
 require 'config.php';
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
-
+/* -- Authentication guard -- */
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
     exit;
 }
 
 $user_id = $_SESSION['user_id'];
+require_once 'branch_modules.php';
+fr_require_module($pdo, 'transactions');
+require_once 'activity_log.php';
 $errors = [];
 $success = "";
 
@@ -44,7 +61,9 @@ foreach ($allProducts as $p) {
     }
 }
 
-/* ------------------- PROCESS CONSIGNMENT ------------------- */
+/* ============================================================
+   [SEARCH TAG: PROCESS_CONSIGNMENT / CONSIGNMENT_TRANSACTIONS / DISTRIBUTOR_SALES_RECORD / RECORD_DISTRIBUTOR_SALE]
+============================================================ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_consignment'])) {
 
     $transaction_ids = $_POST['transaction_ids'] ?? [];
@@ -53,9 +72,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_consignment']
 
     $itemsToProcess = [];
 
-    /* =========================
-       STEP 1: VALIDATE FIRST
-    ========================= */
+    /* ============================================================
+       [SEARCH TAG: CONSIGNMENT_VALIDATION / AVAILABLE_CONSIGNMENT_CHECK / EXCEEDS_CONSIGNMENT_GUARD]
+       STEP 1: VALIDATE AVAILABLE CONSIGNMENT QUANTITIES
+    ============================================================ */
 
     foreach ($product_ids as $i => $pid) {
 
@@ -232,6 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_consignment']
     WHERE id=?
     ")->execute([$transaction_id]);
 
+        fr_log_activity($pdo, 'transactions', 'update', "Processed consignment transaction #{$transaction_id} — marked Completed");
         header("Location: transaction.php?success=1");
         exit;
     }
@@ -253,6 +274,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_transaction'])
         // Delete the transaction
         $pdo->prepare("DELETE FROM transactions WHERE id=? AND user_id=?")->execute([$tid, $user_id]);
         $success = "Transaction cancelled successfully.";
+        fr_log_activity($pdo, 'transactions', 'cancel', "Cancelled pending consignment transaction #{$tid}");
     } else {
         $errors[] = "Cannot cancel this transaction. It may already be completed.";
     }
@@ -393,6 +415,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_transaction'])) {
                 $errors[] = "";
             } else {
                 $pdo->commit();
+                $distNameStmt = $pdo->prepare("SELECT name FROM distributors WHERE id=? AND user_id=?");
+                $distNameStmt->execute([$distributor_id, $user_id]);
+                $distName = $distNameStmt->fetchColumn() ?: "distributor #{$distributor_id}";
+                fr_log_activity($pdo, 'transactions', 'add', "Created consignment transaction with \"{$distName}\" dated {$transaction_date}");
                 header("Location: transaction.php?success=1");
                 exit;
             }
@@ -526,6 +552,66 @@ function getTransactionProducts($pdo, $transaction_id)
             background: white;
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
         }
+
+        /* ============ PRODUCT AUTOCOMPLETE ============ */
+        .product-autocomplete {
+            position: relative;
+        }
+
+        .product-dropdown {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            z-index: 1080;
+            background: #fff;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            max-height: 340px;
+            overflow-y: auto;
+            padding: 6px 0;
+        }
+
+        .pd-group-label {
+            position: sticky;
+            top: 0;
+            background: #eafaf1;
+            color: #198754;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            padding: 6px 14px;
+        }
+
+        .pd-item {
+            padding: 8px 14px;
+            font-size: 14px;
+            color: #1f2937;
+            cursor: pointer;
+        }
+
+        .pd-item:hover,
+        .pd-item.pd-active {
+            background: #f0fdf4;
+            color: #198754;
+        }
+
+        .pd-item mark {
+            background: #d1fae5;
+            color: #15803d;
+            font-weight: 700;
+            padding: 0;
+        }
+
+        .pd-empty {
+            padding: 12px 14px;
+            font-size: 13px;
+            color: #9ca3af;
+            text-align: center;
+        }
     </style>
 
     <script>
@@ -605,30 +691,32 @@ function getTransactionProducts($pdo, $transaction_id)
 
     <!-- SIDEBAR -->
     <div class="sidebar">
+<?= fr_locked_style() ?>
 
         <img src="7.png" class="logo" alt="Fil-Rise Logo">
 
         <div class="menu-title">Core</div>
         <a href="dashboard.php"> Dashboard</a>
-        <a href="ai_forecast.php"
+        <a <?= fr_href('ai_forecast.php') ?>
         style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">
         AI Dashboard</a>
 
         <div class="menu-title">Inventory</div>
-        <a href="product.php"> Products</a>
-        <a href="removed_products.php"> Archived Products</a>
+        <a <?= fr_href('product.php') ?>> Products</a>
+        <a <?= fr_href('removed_products.php') ?>> Archived Products</a>
 
         <div class="menu-title">Operations</div>
-        <a href="transaction.php" class="active">Consignment Transactions</a>
-        <a href="sales.php"> Walk-in Sales</a>
-        <a href="returns.php">Product Returns</a>
-        <a href="stock_requests.php">Stock Requests</a>
-        <a href="daily_records.php"> Daily Records</a>
-        <a href="daily_sales_record.php"> Daily Sales Record</a>
+        <a <?= fr_href('transaction.php') ?> class="active">Consignment Transactions</a>
+        <a <?= fr_href('sales.php') ?>> Walk-in Sales</a>
+        <a <?= fr_href('returns.php') ?>>Product Returns</a>
+        <a <?= fr_href('stock_requests.php') ?>>Stock Requests</a>
+        <a <?= fr_href('daily_records.php') ?>> Daily Records</a>
+        <a <?= fr_href('daily_sales_record.php') ?>> Daily Sales Record</a>
+        <a href="expenses.php">Expenses</a>
 
         <div class="menu-title">People</div>
-        <a href="distributor.php"> Distributors</a>
-        <a href="members.php"> Members</a>
+        <a <?= fr_href('distributor.php') ?>> Distributors</a>
+        <a <?= fr_href('members.php') ?>> Members</a>
 
 
         <div class="logout" onclick="window.location='logout.php'">
@@ -704,10 +792,14 @@ function getTransactionProducts($pdo, $transaction_id)
                                 <div class="row g-3 align-items-end mb-3">
 
                                     <div class="col-md-4">
-                                        <input type="text" class="form-control product-search" list="productList"
-                                            placeholder="Type product name..." oninput="setProductId(this)" required>
-
-                                        <input type="hidden" name="product_ids[]" class="product-id">
+                                        <div class="product-autocomplete">
+                                            <input type="text" class="form-control product-search"
+                                                placeholder="Type product name..." autocomplete="off"
+                                                oninput="filterProducts(this)" onfocus="filterProducts(this)"
+                                                onkeydown="handleProductKeydown(event, this)" required>
+                                            <input type="hidden" name="product_ids[]" class="product-id">
+                                            <div class="product-dropdown"></div>
+                                        </div>
                                     </div>
 
                                     <div class="col-md-2">
@@ -750,13 +842,6 @@ function getTransactionProducts($pdo, $transaction_id)
                 </div>
             </div>
         </div>
-
-        <datalist id="productList">
-            <?php foreach ($allProducts as $p): ?>
-                <option value="<?= htmlspecialchars($p['name']) ?>" data-id="<?= $p['id'] ?>"
-                    data-unit="<?= $p['unit_type'] ?>">
-                <?php endforeach; ?>
-        </datalist>
 
         <!-- LIST OF TRANSACTIONS -->
         <div class="card">
@@ -897,7 +982,13 @@ function getTransactionProducts($pdo, $transaction_id)
                                         </button>
                                     </div>
                                 <?php else: ?>
-                                    <span style="color:#6b7280;font-size:13px;">Recorded</span>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span style="color:#6b7280;font-size:13px;">Recorded</span>
+                                        <a class="btn btn-outline-secondary btn-sm" target="_blank"
+                                            href="receipt_distributor.php?id=<?= $t['id'] ?>">
+                                            View Receipt
+                                        </a>
+                                    </div>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -945,42 +1036,161 @@ function getTransactionProducts($pdo, $transaction_id)
     <?php endif; ?>
 
     <script>
-            function setProductId(input) {
-                const list = document.getElementById('productList');
-                const hiddenInput = input.parentElement.querySelector('.product-id');
-                const unitSelect = input.closest('.row').querySelector('select[name="units[]"]');
+            /* ============ PRODUCT AUTOCOMPLETE (grouped by category) ============ */
 
+            const categoryLabels = {
+                "Coffee": "Coffee",
+                "Health / Liniment / Oil": "Herbal",
+                "Supplements / Capsule": "Capsule",
+                "Fragrance": "Fragrance",
+                "Household": "Household",
+                "La Belleza": "La Belleza"
+            };
+
+            function escapeHtml(str) {
+                return String(str)
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;");
+            }
+
+            function highlightMatch(name, query) {
+                if (!query) return escapeHtml(name);
+                const idx = name.toLowerCase().indexOf(query);
+                if (idx === -1) return escapeHtml(name);
+                const before = escapeHtml(name.slice(0, idx));
+                const match = escapeHtml(name.slice(idx, idx + query.length));
+                const after = escapeHtml(name.slice(idx + query.length));
+                return `${before}<mark>${match}</mark>${after}`;
+            }
+
+            function closeAllProductDropdowns() {
+                document.querySelectorAll('.product-dropdown').forEach(dd => {
+                    dd.style.display = 'none';
+                    dd.innerHTML = '';
+                });
+            }
+
+            function filterProducts(input) {
+                const wrapper = input.closest('.product-autocomplete');
+                const dropdown = wrapper.querySelector('.product-dropdown');
+                const hiddenInput = wrapper.querySelector('.product-id');
+
+                // Typing invalidates any previously confirmed selection
                 hiddenInput.value = "";
+
+                const query = input.value.trim().toLowerCase();
+
+                let matches = (typeof productStock !== 'undefined' ? productStock : [])
+                    .filter(p => p.name.toLowerCase().includes(query));
+
+                matches.sort((a, b) => {
+                    const aStarts = a.name.toLowerCase().startsWith(query) ? 0 : 1;
+                    const bStarts = b.name.toLowerCase().startsWith(query) ? 0 : 1;
+                    if (aStarts !== bStarts) return aStarts - bStarts;
+                    return a.name.localeCompare(b.name);
+                });
+
+                if (matches.length === 0) {
+                    dropdown.innerHTML = '<div class="pd-empty">No matching products</div>';
+                    dropdown.style.display = 'block';
+                    return;
+                }
+
+                // Group matches by category
+                const groups = {};
+                matches.forEach(p => {
+                    const cat = p.category || "Other";
+                    if (!groups[cat]) groups[cat] = [];
+                    groups[cat].push(p);
+                });
+
+                let html = '';
+                Object.keys(groups).forEach(cat => {
+                    const label = categoryLabels[cat] || cat;
+                    html += `<div class="pd-group-label">${escapeHtml(label)}</div>`;
+                    groups[cat].forEach(p => {
+                        html += `<div class="pd-item"
+                                    onclick="selectProduct(this)"
+                                    data-id="${p.id}"
+                                    data-name="${escapeHtml(p.name)}"
+                                    data-unit="${p.unit_type}">
+                                    ${highlightMatch(p.name, query)}
+                                 </div>`;
+                    });
+                });
+
+                dropdown.innerHTML = html;
+                dropdown.style.display = 'block';
+            }
+
+            function selectProduct(el) {
+                const wrapper = el.closest('.product-autocomplete');
+                const input = wrapper.querySelector('.product-search');
+                const hiddenInput = wrapper.querySelector('.product-id');
+                const dropdown = wrapper.querySelector('.product-dropdown');
+                const unitSelect = wrapper.closest('.row').querySelector('select[name="units[]"]');
+
+                input.value = el.dataset.name;
+                hiddenInput.value = el.dataset.id;
+
                 unitSelect.innerHTML = '<option value="">Unit</option>';
-                unitSelect.disabled = false; // Ensure it's enabled by default
+                const unitType = el.dataset.unit;
 
-                Array.from(list.options).forEach(option => {
-
-                    if (option.value.toLowerCase().trim() === input.value.toLowerCase().trim()) {
-
-                        hiddenInput.value = option.dataset.id;
-
-                        const unitType = option.dataset.unit;
-
-                        if (unitType === "BOTTLE") {
-                            unitSelect.innerHTML = `<option value="BOTTLE" selected>BOTTLE</option>`;
-                        }
-
-                        else if (unitType === "PCS") {
-                            unitSelect.innerHTML = `<option value="PCS" selected>PCS</option>`;
-                        }
-
-                        else if (unitType === "BOX") {
-                            unitSelect.innerHTML = `
+                if (unitType === "BOTTLE") {
+                    unitSelect.innerHTML = `<option value="BOTTLE" selected>BOTTLE</option>`;
+                } else if (unitType === "PCS") {
+                    unitSelect.innerHTML = `<option value="PCS" selected>PCS</option>`;
+                } else if (unitType === "BOX") {
+                    unitSelect.innerHTML = `
                 <option value="BOX">BOX</option>
                 <option value="PCS">PCS</option>
             `;
-                        }
+                }
 
-                    }
-
-                });
+                dropdown.style.display = 'none';
+                dropdown.innerHTML = '';
             }
+
+            function handleProductKeydown(event, input) {
+                const wrapper = input.closest('.product-autocomplete');
+                const dropdown = wrapper.querySelector('.product-dropdown');
+
+                if (dropdown.style.display !== 'block') return;
+
+                const items = Array.from(dropdown.querySelectorAll('.pd-item'));
+                if (items.length === 0) return;
+
+                let activeIndex = items.findIndex(i => i.classList.contains('pd-active'));
+
+                if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    if (activeIndex >= 0) items[activeIndex].classList.remove('pd-active');
+                    activeIndex = (activeIndex + 1) % items.length;
+                    items[activeIndex].classList.add('pd-active');
+                    items[activeIndex].scrollIntoView({ block: 'nearest' });
+                } else if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    if (activeIndex >= 0) items[activeIndex].classList.remove('pd-active');
+                    activeIndex = (activeIndex - 1 + items.length) % items.length;
+                    items[activeIndex].classList.add('pd-active');
+                    items[activeIndex].scrollIntoView({ block: 'nearest' });
+                } else if (event.key === 'Enter') {
+                    if (activeIndex >= 0) {
+                        event.preventDefault();
+                        selectProduct(items[activeIndex]);
+                    }
+                } else if (event.key === 'Escape') {
+                    dropdown.style.display = 'none';
+                }
+            }
+
+            document.addEventListener('click', function (e) {
+                if (!e.target.closest('.product-autocomplete')) {
+                    closeAllProductDropdowns();
+                }
+            });
 
 
             const productGroups = <?= json_encode($productGroups) ?>;
@@ -1026,16 +1236,22 @@ function getTransactionProducts($pdo, $transaction_id)
               </button>
             </div>
         <div class="col-md-4">
-    <input type="text"
-           class="form-control product-search"
-           list="productList"
-           placeholder="Type product name..."
-           oninput="setProductId(this)"
-           required>
+    <div class="product-autocomplete">
+        <input type="text"
+               class="form-control product-search"
+               placeholder="Type product name..."
+               autocomplete="off"
+               oninput="filterProducts(this)"
+               onfocus="filterProducts(this)"
+               onkeydown="handleProductKeydown(event, this)"
+               required>
 
-    <input type="hidden"
-           name="product_ids[]"
-           class="product-id">
+        <input type="hidden"
+               name="product_ids[]"
+               class="product-id">
+
+        <div class="product-dropdown"></div>
+    </div>
 </div>
 
         <div class="col-md-2">

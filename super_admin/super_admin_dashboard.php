@@ -20,25 +20,25 @@ include '_layout_top.php';
 ?>
 
 <style>
-  .sad-hero { background: linear-gradient(135deg, #1c0f0f, #2a1414); border-radius: 16px; padding: 28px 32px; margin-bottom: 24px; color: #fff; }
-  .sad-hero-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #fca5a5; margin-bottom: 8px; }
-  .sad-hero-title { font-size: 24px; font-weight: 800; }
-  .sad-hero-sub { font-size: 13px; color: #cbb0af; margin-top: 6px; }
+  .sad-hero { background: #1c0f0f; border-radius: 10px; padding: 24px 28px; margin-bottom: 24px; color: #fff; }
+  .sad-hero-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #fca5a5; margin-bottom: 8px; }
+  .sad-hero-title { font-size: 22px; font-weight: 700; }
+  .sad-hero-sub { font-size: 13px; color: #d4d4d8; margin-top: 6px; }
 
   .sad-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 28px; }
-  .sad-stat { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px; }
-  .sad-stat-num { font-size: 28px; font-weight: 800; color: #0f172a; }
-  .sad-stat-label { font-size: 12px; color: #94a3b8; font-weight: 600; margin-top: 4px; }
+  .sad-stat { background: #fff; border: 1px solid #e4e4e7; border-radius: 10px; padding: 18px; }
+  .sad-stat-num { font-size: 24px; font-weight: 700; color: #18181b; }
+  .sad-stat-label { font-size: 12px; color: #71717a; font-weight: 600; margin-top: 4px; }
 
   .sad-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
   .sad-action-card {
-    background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 22px;
-    text-decoration: none; display: block; transition: .15s;
+    background: #fff; border: 1px solid #e4e4e7; border-radius: 10px; padding: 20px;
+    text-decoration: none; display: block;
   }
-  .sad-action-card:hover { border-color: #dc2626; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,.06); }
-  .sad-action-icon { font-size: 22px; margin-bottom: 10px; }
-  .sad-action-title { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
-  .sad-action-desc { font-size: 12.5px; color: #94a3b8; }
+  .sad-action-card:hover { border-color: #dc2626; }
+  .sad-action-icon { font-size: 20px; margin-bottom: 10px; }
+  .sad-action-title { font-size: 14px; font-weight: 700; color: #18181b; margin-bottom: 4px; }
+  .sad-action-desc { font-size: 12.5px; color: #71717a; }
 </style>
 
 <div class="sad-hero">

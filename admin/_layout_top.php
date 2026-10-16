@@ -1,5 +1,14 @@
 <?php
-// admin/_layout_top.php
+/**
+ * admin/_layout_top.php — Admin Layout Header (Shared Template)
+ *
+ * Shared HTML head and sidebar navigation for all admin pages.
+ * Includes: Bootstrap, Poppins font, Chart.js, admin sidebar with
+ * navigation links, and responsive mobile support.
+ *
+ * Usage: Set $pageTitle and $activePage before including this file.
+ * The sidebar highlights the active page link automatically.
+ */
 require __DIR__ . "/auth.php";
 ?>
 <!doctype html>
@@ -182,6 +191,7 @@ require __DIR__ . "/auth.php";
   <a class="navlink <?= ($activePage??'') === 'branches'  ? 'active' : '' ?>" href="branches.php">Branches</a>
   <a class="navlink <?= ($activePage??'') === 'reports'   ? 'active' : '' ?>" href="admin_reports.php">Reports</a>
   <a class="navlink <?= ($activePage??'') === 'stock_requests' ? 'active' : '' ?>" href="stock_requests.php">Stock Requests</a>
+  <a class="navlink <?= ($activePage??'') === 'expenses'       ? 'active' : '' ?>" href="expenses.php">Expenses</a>
 
   <div class="sidebox">
     <div style="font-size:12px;color:#cbd5e1;">Logged in as:</div>

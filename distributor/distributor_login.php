@@ -1,4 +1,10 @@
 <?php
+/**
+ * distributor/distributor_login.php — Distributor Portal Login Interface
+ *
+ * Authenticates distributor accounts using distributor_accounts credentials.
+ * Handles password verification and starts distributor session.
+ */
 require '../config.php';
 session_start();
 

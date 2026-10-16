@@ -1,4 +1,10 @@
 <?php
+/**
+ * admin/check_report_notifications.php — Polling Endpoint for Today's Submitted Reports
+ *
+ * Checks if any branch has submitted their daily report today.
+ * Returns a JSON array of submitted branch reports to trigger admin UI notification alerts.
+ */
 require '../config.php';
 
 header('Content-Type: application/json');

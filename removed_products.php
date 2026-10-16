@@ -1,14 +1,24 @@
 <?php
+/**
+ * removed_products.php — Archived (Soft-Deleted) Products Page
+ *
+ * Displays all products that have been soft-deleted (is_active=0).
+ * Staff can restore archived products back to the active inventory.
+ * Restoration is logged to the activity_log table.
+ */
 require 'config.php';
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
-
+/* -- Authentication guard -- */
 if (!isset($_SESSION['user_id'])) {
   header('Location: login.php');
   exit;
 }
 
 $user_id = $_SESSION['user_id'];
+require_once 'branch_modules.php';
+fr_require_module($pdo, 'products');
+require_once 'activity_log.php';
 $success = '';
 
 /* =============================
@@ -18,6 +28,10 @@ if (isset($_POST['restore_product'])) {
 
   $id = intval($_POST['restore_id']);
 
+  $nameStmt = $pdo->prepare("SELECT name FROM products WHERE id=? AND user_id=?");
+  $nameStmt->execute([$id, $user_id]);
+  $restoredName = $nameStmt->fetchColumn() ?: "product #{$id}";
+
   $pdo->prepare("
     UPDATE products 
     SET is_active=1 
@@ -25,6 +39,7 @@ if (isset($_POST['restore_product'])) {
   ")->execute([$id, $user_id]);
 
   $success = "✅ Product restored successfully!";
+  fr_log_activity($pdo, 'products', 'update', "Restored product \"{$restoredName}\" from archive");
 }
 
 /* =============================
@@ -137,30 +152,32 @@ $products = $stmt->fetchAll();
   <?php include 'ticker.php'; ?>
 
   <div class="sidebar">
+<?= fr_locked_style() ?>
 
     <img src="7.png" class="logo" alt="Fil-Rise Logo">
 
     <div class="menu-title">Core</div>
     <a href="dashboard.php"> Dashboard</a>
-    <a href="ai_forecast.php"
+    <a <?= fr_href('ai_forecast.php') ?>
       style="background:linear-gradient(90deg,rgba(6,182,212,.15),rgba(59,130,246,.15));color:#06b6d4;border:1px solid rgba(6,182,212,.25);">
       AI Dashboard</a>
 
     <div class="menu-title">Inventory</div>
-    <a href="product.php"> Products</a>
-    <a href="removed_products.php" class="active"> Archived Products</a>
+    <a <?= fr_href('product.php') ?>> Products</a>
+    <a <?= fr_href('removed_products.php') ?> class="active"> Archived Products</a>
 
     <div class="menu-title">Operations</div>
-    <a href="transaction.php">Consignment Transactions</a>
-    <a href="sales.php"> Walk-in Sales</a>
-    <a href="returns.php">Product Returns</a>
-    <a href="stock_requests.php">Stock Requests</a>
-    <a href="daily_records.php"> Daily Records</a>
-    <a href="daily_sales_record.php"> Daily Sales Record</a>
+    <a <?= fr_href('transaction.php') ?>>Consignment Transactions</a>
+    <a <?= fr_href('sales.php') ?>> Walk-in Sales</a>
+    <a <?= fr_href('returns.php') ?>>Product Returns</a>
+    <a <?= fr_href('stock_requests.php') ?>>Stock Requests</a>
+    <a <?= fr_href('daily_records.php') ?>> Daily Records</a>
+    <a <?= fr_href('daily_sales_record.php') ?>> Daily Sales Record</a>
+    <a href="expenses.php">Expenses</a>
 
     <div class="menu-title">People</div>
-    <a href="distributor.php"> Distributors</a>
-    <a href="members.php"> Members</a>
+    <a <?= fr_href('distributor.php') ?>> Distributors</a>
+    <a <?= fr_href('members.php') ?>> Members</a>
 
     <div class="logout" onclick="window.location='logout.php'">
       Logout
